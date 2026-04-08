@@ -80,7 +80,7 @@ export default function KatalogPage() {
             .range(0, 9999),
           sb.from("kategorie").select("*").order("poradi"),
           sb.from("znacky").select("*").order("nazev"),
-          sb.rpc("min_ceny_katalog"),
+          sb.rpc("min_ceny_katalog").range(0, 9999),
         ]);
         setProdukty((prodRes.data as Produkt[]) || []);
         setKategorie((katRes.data as Kategorie[]) || []);

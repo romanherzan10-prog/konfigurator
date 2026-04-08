@@ -337,10 +337,16 @@ export default function ProduktDetailPage({
 
           {/* CTA */}
           <a
-            href={`/?produkt=${encodeURIComponent(produkt.kod)}`}
+            href={`/?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary-hover transition-colors"
           >
-            Poptat tento produkt
+            Přidat do poptávky
+          </a>
+          <a
+            href="/katalog"
+            className="inline-flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:border-gray-400 transition-colors"
+          >
+            ← Zpět do katalogu
           </a>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   LOCATION_OPTIONS,
   DEFAULT_CONFIG,
@@ -15,6 +16,16 @@ import {
   type KonfiguratorNastaveni,
 } from "@/lib/pricing";
 import { getSupabase } from "@/lib/supabase";
+
+// Mapování kategorie z katalogu → typ produktu v konfigurátoru
+const KATEGORIE_TO_TYPE: Record<string, ProductType> = {
+  "Trička": "tricko",
+  "Polokošile": "polokosile",
+  "Mikiny & Svetry": "mikina",
+  "Bundy & Vesty": "bunda",
+  "Čepice & Kšiltovky": "cepice",
+  "Tašky & Batohy": "taska",
+};
 
 function defaultDeadline(): string {
   const d = new Date();
@@ -35,9 +46,23 @@ const PRODUCT_ICONS: Record<ProductType, string> = {
   taska: "👜",
 };
 
-export default function Home() {
+// Katalogový produkt přidaný z detailu
+interface CatalogProduct {
+  kod: string;
+  nazev: string;
+  cena: number; // doporučená cena bez DPH
+  barva: string | null;
+  kategorie: string | null;
+}
+
+function HomeInner() {
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<KonfiguratorNastaveni | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
+
+  // Katalogové produkty
+  const [catalogProduct, setCatalogProduct] = useState<CatalogProduct | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -57,8 +82,60 @@ export default function Home() {
     load();
   }, []);
 
+  // Detekce katalogového produktu z URL parametrů
+  useEffect(() => {
+    const produktKod = searchParams.get("produkt");
+    const cena = searchParams.get("cena");
+    const nazev = searchParams.get("nazev");
+    const barva = searchParams.get("barva");
+    const kategorie = searchParams.get("kategorie");
+
+    if (produktKod && cena && nazev) {
+      const cp: CatalogProduct = {
+        kod: produktKod,
+        nazev: decodeURIComponent(nazev),
+        cena: Number(cena),
+        barva: barva ? decodeURIComponent(barva) : null,
+        kategorie: kategorie ? decodeURIComponent(kategorie) : null,
+      };
+      setCatalogProduct(cp);
+
+      // Nastav typ produktu podle kategorie
+      if (cp.kategorie && KATEGORIE_TO_TYPE[cp.kategorie]) {
+        setProductType(KATEGORIE_TO_TYPE[cp.kategorie]);
+      }
+
+      // Předvyplň poznámku
+      const parts = [`Produkt z katalogu: ${cp.kod} — ${cp.nazev}`];
+      if (cp.barva) parts.push(`Barva: ${cp.barva}`);
+      setAdditionalInfo(parts.join("\n"));
+
+      // Toast
+      setToast(`Produkt "${cp.nazev}" přidán do poptávky`);
+      setTimeout(() => setToast(null), 5000);
+
+      // Vyčisti URL (bez reloadu)
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams]);
+
   const activeConfig = config ?? DEFAULT_CONFIG;
   const productTypes = useMemo(() => getProductTypes(activeConfig), [activeConfig]);
+
+  // Pokud je katalogový produkt, přepiš jeho cenu v konfiguraci
+  const effectiveConfig = useMemo(() => {
+    if (!catalogProduct) return activeConfig;
+    const override = { ...activeConfig };
+    // Najdi odpovídající typ a přepiš cenu
+    if (catalogProduct.kategorie && KATEGORIE_TO_TYPE[catalogProduct.kategorie]) {
+      const type = KATEGORIE_TO_TYPE[catalogProduct.kategorie];
+      const key = `cena_${type}` as keyof KonfiguratorNastaveni;
+      (override as Record<string, unknown>)[key] = catalogProduct.cena;
+    }
+    return override;
+  }, [activeConfig, catalogProduct]);
+
+  const effectiveProductTypes = useMemo(() => getProductTypes(effectiveConfig), [effectiveConfig]);
 
   // Form state
   const [productType, setProductType] = useState<ProductType>("tricko");
@@ -80,11 +157,11 @@ export default function Home() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  const logoSizes = useMemo(() => getLogoSizes(activeConfig, serviceType), [activeConfig, serviceType]);
+  const logoSizes = useMemo(() => getLogoSizes(effectiveConfig, serviceType), [effectiveConfig, serviceType]);
 
   const estimate = useMemo(
-    () => calculateEstimate(productType, serviceType, quantity, serviceType === "clean" ? [] : placements, activeConfig),
-    [productType, serviceType, quantity, placements, activeConfig]
+    () => calculateEstimate(productType, serviceType, quantity, serviceType === "clean" ? [] : placements, effectiveConfig),
+    [productType, serviceType, quantity, placements, effectiveConfig]
   );
 
   function updatePlacement(idx: number, field: keyof LogoPlacement, value: string) {
@@ -163,7 +240,7 @@ export default function Home() {
         <h1 className="text-3xl font-bold mb-4">Poptávka odeslána</h1>
         <p className="text-gray-600 mb-2">
           Děkujeme, {firstName}! Vaši poptávku na{" "}
-          <strong>{quantity}× {productTypes[productType].label}</strong> jsme přijali.
+          <strong>{quantity}× {effectiveProductTypes[productType].label}</strong> jsme přijali.
         </p>
         <p className="text-gray-600 mb-8">
           Odhadovaná cena: <strong>{formatPrice(estimate.totalPriceWithDph)}</strong> vč. DPH.
@@ -182,6 +259,35 @@ export default function Home() {
   // Form
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      {/* Toast notifikace */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-[slideIn_0.3s_ease-out] bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3">
+          <span className="text-lg">✅</span>
+          <span className="text-sm font-medium">{toast}</span>
+          <button type="button" onClick={() => setToast(null)} className="ml-2 text-white/70 hover:text-white cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {/* Banner katalogového produktu */}
+      {catalogProduct && (
+        <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-blue-900">
+              Poptáváte produkt z katalogu: <span className="font-bold">{catalogProduct.nazev}</span>
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Kód: {catalogProduct.kod}
+              {catalogProduct.barva && ` · Barva: ${catalogProduct.barva}`}
+              {` · Doporučená cena: ${catalogProduct.cena.toLocaleString("cs-CZ")} Kč bez DPH`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="/katalog" className="text-xs text-blue-600 hover:text-blue-800 underline">← Zpět do katalogu</a>
+            <button type="button" onClick={() => setCatalogProduct(null)} className="text-blue-400 hover:text-blue-600 cursor-pointer text-lg">✕</button>
+          </div>
+        </div>
+      )}
+
       <h1 className="text-3xl font-bold mb-2">{activeConfig.nadpis}</h1>
       <p className="text-gray-500 mb-8">{activeConfig.podnadpis}</p>
 
@@ -193,8 +299,8 @@ export default function Home() {
             <h2 className="text-lg font-semibold mb-1">1. Vyberte produkt</h2>
             <p className="text-sm text-gray-500 mb-4">Zvolte typ textilu.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {(Object.keys(productTypes) as ProductType[]).map((key) => {
-                const p = productTypes[key];
+              {(Object.keys(effectiveProductTypes) as ProductType[]).map((key) => {
+                const p = effectiveProductTypes[key];
                 const selected = productType === key;
                 return (
                   <button key={key} type="button" onClick={() => setProductType(key)}
@@ -399,7 +505,7 @@ export default function Home() {
 
             <div className="text-sm text-gray-500 space-y-2">
               <div className="flex justify-between">
-                <span>{productTypes[productType].label}</span>
+                <span>{effectiveProductTypes[productType].label}</span>
                 <span className="font-medium text-gray-900">{formatPrice(Math.round(estimate.baseProductPrice * 1.21))}</span>
               </div>
               {estimate.zpracovaniPrice > 0 && (
@@ -436,5 +542,18 @@ export default function Home() {
         </aside>
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="mx-auto max-w-2xl px-4 py-24 text-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-primary" />
+        <p className="mt-4 text-gray-500">Načítám konfigurátor...</p>
+      </div>
+    }>
+      <HomeInner />
+    </Suspense>
   );
 }
