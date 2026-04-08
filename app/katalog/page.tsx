@@ -16,7 +16,8 @@ interface Produkt {
   nazev: string;
   popis: string | null;
   material: string | null;
-  gramaz: number | null;
+  gramaz: string | null;
+  hmotnost_g: number | null;
   obrazek_url: string | null;
   aktivni: boolean;
   znacka: { nazev: string } | null;
@@ -77,7 +78,8 @@ export default function KatalogPage() {
             .select(
               "*, znacka:znacky(nazev), kategorie:kategorie(nazev), barvy:produkt_barvy(id, nazev, hex_kod, obrazek_url)"
             )
-            .eq("aktivni", true),
+            .eq("aktivni", true)
+            .range(0, 9999),
           sb.from("kategorie").select("*").order("poradi"),
           sb.from("znacky").select("*").order("nazev"),
           sb.rpc("min_ceny_katalog"),
@@ -344,9 +346,13 @@ export default function KatalogPage() {
                           {p.znacka.nazev}
                         </p>
                       )}
-                      {(p.material || p.gramaz) && (
+                      {(p.material || p.gramaz || p.hmotnost_g) && (
                         <p className="text-xs text-gray-400 mb-2">
-                          {[p.material, p.gramaz ? `${p.gramaz} g/m²` : null]
+                          {[
+                            p.material,
+                            p.gramaz ? `${p.gramaz} g/m²` : null,
+                            p.hmotnost_g ? `${p.hmotnost_g} g` : null,
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </p>

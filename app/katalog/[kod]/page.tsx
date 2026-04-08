@@ -36,7 +36,8 @@ interface ProduktDetail {
   nazev: string;
   popis: string | null;
   material: string | null;
-  gramaz: number | null;
+  gramaz: string | null;
+  hmotnost_g: number | null;
   obrazek_url: string | null;
   znacka: { nazev: string; logo_url: string | null } | null;
   kategorie: { nazev: string } | null;
@@ -247,6 +248,12 @@ export default function ProduktDetailPage({
               <p>
                 <span className="font-medium text-gray-700">Gramáž:</span>{" "}
                 {produkt.gramaz} g/m²
+              </p>
+            )}
+            {produkt.hmotnost_g && (
+              <p>
+                <span className="font-medium text-gray-700">Hmotnost:</span>{" "}
+                {produkt.hmotnost_g} g
               </p>
             )}
             {produkt.kategorie && (
