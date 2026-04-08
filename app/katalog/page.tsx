@@ -123,7 +123,9 @@ export default function KatalogPage() {
       result = result.filter(
         (p) =>
           p.nazev.toLowerCase().includes(q) ||
-          p.kod.toLowerCase().includes(q)
+          p.kod.toLowerCase().includes(q) ||
+          (p.popis && p.popis.toLowerCase().includes(q)) ||
+          (p.znacka && p.znacka.nazev.toLowerCase().includes(q))
       );
     }
 
