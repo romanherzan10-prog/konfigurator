@@ -15,9 +15,7 @@ interface Produkt {
   kod: string;
   nazev: string;
   popis: string | null;
-  material: string | null;
   gramaz: string | null;
-  hmotnost_g: number | null;
   obrazek_url: string | null;
   aktivni: boolean;
   znacka: { nazev: string } | null;
@@ -321,23 +319,23 @@ export default function KatalogPage() {
                 {filtered.map((p) => (
                   <div
                     key={p.id}
-                    className="rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-sm transition-shadow"
+                    className="rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-sm transition-shadow flex flex-col"
                   >
-                    {/* Obrázek */}
-                    <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                    {/* Obrázek — object-contain aby byl vidět celý produkt */}
+                    <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden p-3">
                       {p.obrazek_url ? (
                         <img
                           src={p.obrazek_url}
                           alt={p.nazev}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                         />
                       ) : (
                         <span className="text-5xl opacity-40">👕</span>
                       )}
                     </div>
 
-                    {/* Info */}
-                    <div className="p-4">
+                    {/* Info — flex-1 + flex-col pro zarovnání tlačítka dolů */}
+                    <div className="p-4 flex flex-col flex-1">
                       <h3 className="font-semibold text-sm leading-tight mb-1 line-clamp-2">
                         {p.nazev}
                       </h3>
@@ -346,24 +344,29 @@ export default function KatalogPage() {
                           {p.znacka.nazev}
                         </p>
                       )}
-                      {(p.material || p.gramaz || p.hmotnost_g) && (
-                        <p className="text-xs text-gray-400 mb-2">
-                          {[
-                            p.material,
-                            p.gramaz ? `${p.gramaz} g/m²` : null,
-                            p.hmotnost_g ? `${p.hmotnost_g} g` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
+                      {/* Krátký popis produktu místo materiálu */}
+                      {p.popis && (
+                        <p className="text-xs text-gray-400 mb-1 line-clamp-2">
+                          {p.popis}
+                        </p>
+                      )}
+                      {p.gramaz && (
+                        <p className="text-xs text-gray-400 mb-1">
+                          {p.gramaz} g/m²
                         </p>
                       )}
 
-                      {/* Cena */}
+                      {/* Cena — VK1000 × 2 = doporučená */}
                       {cenyMap[p.kod] && (
-                        <p className="text-sm font-semibold text-primary mb-2">
-                          od {cenyMap[p.kod].toLocaleString("cs-CZ")} Kč
-                          <span className="text-xs font-normal text-gray-400 ml-1">bez DPH</span>
-                        </p>
+                        <div className="mb-2">
+                          <p className="text-sm font-semibold text-primary">
+                            od {cenyMap[p.kod].toLocaleString("cs-CZ")} Kč
+                            <span className="text-xs font-normal text-gray-400 ml-1">bez DPH</span>
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            od {Math.round(cenyMap[p.kod] * 1.21).toLocaleString("cs-CZ")} Kč s DPH
+                          </p>
+                        </div>
                       )}
 
                       {/* Barevné tečky */}
@@ -387,9 +390,10 @@ export default function KatalogPage() {
                         </div>
                       )}
 
+                      {/* Tlačítko vždy dole */}
                       <a
                         href={`/katalog/${p.kod}`}
-                        className="block w-full text-center px-3 py-2 text-sm font-medium rounded-lg border border-primary text-primary hover:bg-primary hover:text-white transition-colors"
+                        className="block w-full text-center px-3 py-2 text-sm font-medium rounded-lg border border-primary text-primary hover:bg-primary hover:text-white transition-colors mt-auto"
                       >
                         Detail
                       </a>

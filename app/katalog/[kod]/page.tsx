@@ -159,16 +159,15 @@ export default function ProduktDetailPage({
   const displayImage = selectedBarva?.obrazek_url || produkt.obrazek_url || null;
   const skladItems = selectedBarva?.sklad ? [...selectedBarva.sklad].sort(sortVelikosti) : [];
 
-  // Doporučená cena pro zákazníky — pouze cena_1 (VKEinzel)
-  // Ostatní ceny (VK10–VK1000) jsou nákupní a nejsou zobrazeny
+  // Doporučená cena = VK1000 (nákupní při 1000ks) × 2
   const selectedBarvaNazev = selectedBarva?.nazev?.toLowerCase() || null;
   const relevantniCeniky = ceniky.filter(c =>
     !c.barva || !selectedBarvaNazev || c.barva.toLowerCase() === selectedBarvaNazev
   );
 
   const doporuceneCeny = relevantniCeniky
-    .map(c => c.cena_1)
-    .filter((v): v is number => v != null && v > 0);
+    .map(c => c.cena_1000 != null && c.cena_1000 > 0 ? Math.round(c.cena_1000 * 2) : null)
+    .filter((v): v is number => v != null);
 
   const cenaOd = doporuceneCeny.length > 0 ? Math.min(...doporuceneCeny) : null;
   const cenaDo = doporuceneCeny.length > 1 ? Math.max(...doporuceneCeny) : null;
@@ -228,9 +227,14 @@ export default function ProduktDetailPage({
                   <span className="text-sm text-gray-400">bez DPH / ks</span>
                 </div>
               </div>
-              <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100">
+              <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 space-y-1">
                 <p className="text-xs text-gray-500">
-                  Cena závisí na barvě a velikosti. Při větším množství nabízíme slevu — kontaktujte nás pro individuální nabídku.
+                  {cenaOd === cenaDo || cenaDo == null
+                    ? `${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`
+                    : `od ${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Při větším množství nabízíme slevu — kontaktujte nás pro individuální nabídku.
                 </p>
               </div>
             </div>
