@@ -31,8 +31,8 @@ export default function HomePage() {
           Firemní textil za pár minut
         </h1>
         <p className="mt-4 text-slate-600 text-base md:text-lg max-w-2xl mx-auto">
-          Popište asistentovi, co potřebujete — on prohledá 3 600+ produktů,
-          spočítá orientační cenu a připraví poptávku. Bez formulářů.
+          Popište Jardovi, co potřebujete — prohledá 3 600+ produktů, spočítá
+          orientační cenu a připraví poptávku. Bez formulářů.
         </p>
       </section>
 

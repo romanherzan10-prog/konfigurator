@@ -29,7 +29,31 @@ const STEP_LABELS: Record<StepKey, string> = {
 };
 
 const WELCOME_MESSAGE =
-  "Ahoj 👋 Jsem asistent LOOOKU. Popište mi, co potřebujete, a během pár minut dostanete orientační cenu. Můžete začít třeba takhle:";
+  "Dobrý den, jsem Jarda Kužel z LOOOKU. Popište mi, co potřebujete — během pár minut vám připravím orientační cenu a poradím s výběrem. Můžete začít třeba takhle:";
+
+// Rotující "thinking" zprávy podle typu toolu — střídají se po ~2.5s,
+// aby zákazník viděl, že asistent furt pracuje, i když odpověď trvá déle.
+const TOOL_STATUS_MESSAGES: Record<string, string[]> = {
+  search_products: [
+    "Mrkám do katalogu…",
+    "Procházím 3 606 produktů skladem…",
+    "Vybírám pro vás nejvhodnější varianty…",
+    "Porovnávám gramáže a ceny…",
+    "Ještě moment, hledám to nejlepší…",
+  ],
+  get_product_detail: [
+    "Načítám detail produktu…",
+    "Kontroluji ceny pro vaše množství…",
+    "Ověřuji skladové zásoby…",
+  ],
+  submit_inquiry: [
+    "Odesílám poptávku našemu týmu…",
+    "Ukládám vaše údaje…",
+    "Dokončuji…",
+  ],
+  update_session: ["Zapisuji si poznámky…"],
+  default: ["Pracuji na tom…", "Sekundu prosím…", "Ještě moment…"],
+};
 
 const EXAMPLES = [
   "Potřebuju 50 triček s logem pro náš tým",
@@ -45,7 +69,12 @@ export default function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  // Aktivní tool: { name, startedAt } — null když žádný neběží
+  const [activeTool, setActiveTool] = useState<{ name: string; startedAt: number } | null>(null);
+  // Index v rotujícím listu zpráv pro daný tool — měníme přes interval
+  const [toolMessageIdx, setToolMessageIdx] = useState(0);
+  // Sekundy uplynulé od startu aktuálního toolu — tickuje každou sekundu
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [currentStep, setCurrentStep] = useState<StepKey>("produkt");
   const [gdprAccepted, setGdprAccepted] = useState(false);
   const [showGdpr, setShowGdpr] = useState(false);
@@ -110,7 +139,29 @@ export default function ChatAssistant() {
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, toolStatus]);
+  }, [messages, activeTool]);
+
+  // ----------------------------------------------------------
+  // Tool indicator: tickuje elapsed čas + rotuje thinking zprávu
+  // ----------------------------------------------------------
+  useEffect(() => {
+    if (!activeTool) {
+      setToolMessageIdx(0);
+      setElapsedSec(0);
+      return;
+    }
+    const tick = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - activeTool.startedAt) / 1000));
+    }, 500);
+    const rotate = setInterval(() => {
+      const list = TOOL_STATUS_MESSAGES[activeTool.name] ?? TOOL_STATUS_MESSAGES.default;
+      setToolMessageIdx((i) => (i + 1) % list.length);
+    }, 2500);
+    return () => {
+      clearInterval(tick);
+      clearInterval(rotate);
+    };
+  }, [activeTool]);
 
   // ----------------------------------------------------------
   // Progress stepper — jednoduchá heuristika podle počtu zpráv + obsahu
@@ -148,7 +199,7 @@ export default function ChatAssistant() {
       const userMsg: Message = { role: "user", content: text };
       setMessages((m) => [...m, userMsg, { role: "assistant", content: "", streaming: true }]);
       setIsLoading(true);
-      setToolStatus(null);
+      setActiveTool(null);
 
       try {
         const res = await fetch("/api/chat", {
@@ -192,14 +243,11 @@ export default function ChatAssistant() {
                   return copy;
                 });
               } else if (event.type === "tool_start") {
-                if (event.name === "search_products") setToolStatus("Hledám v katalogu…");
-                else if (event.name === "get_product_detail")
-                  setToolStatus("Načítám detail produktu…");
-                else if (event.name === "submit_inquiry")
-                  setToolStatus("Odesílám poptávku…");
-                else setToolStatus(`Zpracovávám ${event.name}…`);
+                setActiveTool({ name: event.name, startedAt: Date.now() });
+                setToolMessageIdx(0);
+                setElapsedSec(0);
               } else if (event.type === "tool_end") {
-                setToolStatus(null);
+                setActiveTool(null);
               } else if (event.type === "done") {
                 setMessages((prev) => {
                   const copy = [...prev];
@@ -224,7 +272,7 @@ export default function ChatAssistant() {
         setMessages((prev) => prev.slice(0, -1));
       } finally {
         setIsLoading(false);
-        setToolStatus(null);
+        setActiveTool(null);
       }
     },
     [sessionId, isLoading, currentStep, gdprAccepted]
@@ -257,12 +305,15 @@ export default function ChatAssistant() {
       <div className="border-b border-slate-200 bg-slate-50/50 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
-              L
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-semibold shadow-md">
+                JK
+              </div>
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
             </div>
             <div>
-              <div className="font-semibold text-slate-900">LOOOKU asistent</div>
-              <div className="text-xs text-slate-500">Obvykle odpoví do pár sekund</div>
+              <div className="font-semibold text-slate-900">Jarda Kužel</div>
+              <div className="text-xs text-slate-500">Obchodník LOOOKU · pomůže s poptávkou</div>
             </div>
           </div>
         </div>
@@ -347,12 +398,38 @@ export default function ChatAssistant() {
           </div>
         ))}
 
-        {/* Tool status indicator */}
-        {toolStatus && (
+        {/* Tool status indicator — rotující zprávy + elapsed čas */}
+        {activeTool && (() => {
+          const list =
+            TOOL_STATUS_MESSAGES[activeTool.name] ?? TOOL_STATUS_MESSAGES.default;
+          const message = list[toolMessageIdx % list.length];
+          return (
+            <div className="flex justify-start">
+              <div className="bg-blue-50 text-blue-800 text-sm px-4 py-2.5 rounded-2xl border border-blue-200 shadow-sm flex items-center gap-3 max-w-[85%]">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="font-medium">{message}</span>
+                {elapsedSec >= 3 && (
+                  <span className="text-xs text-blue-500 tabular-nums">{elapsedSec}s</span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Loading bez aktivního toolu — pauza mezi text streamingem a tool callem */}
+        {isLoading && !activeTool && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && (
           <div className="flex justify-start">
-            <div className="bg-blue-50 text-blue-700 text-xs px-3 py-1.5 rounded-full border border-blue-200 flex items-center gap-2">
-              <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              {toolStatus}
+            <div className="bg-white text-slate-500 text-sm px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <span>Jarda píše…</span>
             </div>
           </div>
         )}
