@@ -29,6 +29,8 @@ export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS = 2048;
 const MAX_TOOL_ITERATIONS = 6; // safeguard proti infinite loopu
+const FALLBACK_EMPTY_TEXT =
+  "Pardon, něco se mi tady zaseklo a nemám pro vás odpověď. Zkuste to prosím napsat trochu jinak — nebo začněte nový chat tlačítkem nahoře.";
 
 // Rate limit per session: max 40 zpráv za sessionu
 const MAX_MESSAGES_PER_SESSION = 40;
@@ -144,17 +146,30 @@ export async function POST(req: NextRequest) {
       const toolResultLog: Array<{ tool_use_id: string; content: unknown }> =
         [];
 
+      // Heartbeat — drží SSE spojení živé i během dlouhých tool callů
+      // (Vercel/Nginx někdy zařízne idle TCP > 30s)
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(`: ping\n\n`));
+        } catch {
+          // controller mohl být uzavřen
+        }
+      }, 10000);
+
       try {
         // Tool use loop — Claude může chtít volat nástroje opakovaně
         while (iterationCount < MAX_TOOL_ITERATIONS) {
           iterationCount++;
+          const isLastIteration = iterationCount === MAX_TOOL_ITERATIONS;
 
-          // Volání Claude API (streaming)
+          // V poslední iteraci VYNUTÍME text odpověď (žádné další tooly),
+          // jinak by Claude mohl skončit jen s tool_use a klient by viděl prázdnou bublinu.
           const response = await anthropic.messages.stream({
             model: MODEL,
             max_tokens: MAX_TOKENS,
             system: buildSystemPrompt(),
             tools: CHAT_TOOLS,
+            tool_choice: isLastIteration ? { type: "none" } : { type: "auto" },
             messages,
           });
 
@@ -245,6 +260,26 @@ export async function POST(req: NextRequest) {
 
         const latencyMs = Date.now() - startTime;
 
+        // Pojistka: pokud Claude navzdory všemu nevyprodukoval žádný text
+        // (např. pure tool_use loop), pošli klientovi fallback hlášku,
+        // aby nezůstala viset prázdná bublina.
+        if (fullText.trim().length === 0) {
+          fullText = FALLBACK_EMPTY_TEXT;
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "text", text: fullText })}\n\n`
+            )
+          );
+          await supabase.from("chat_events").insert({
+            session_id: sessionId,
+            event_type: "empty_response_fallback",
+            payload: {
+              iteration_count: iterationCount,
+              tool_calls: toolCallLog.length,
+            },
+          });
+        }
+
         // Ulož assistant odpověď + aktualizuj session
         await supabase.from("chat_messages").insert({
           session_id: sessionId,
@@ -299,6 +334,7 @@ export async function POST(req: NextRequest) {
           payload: { error: msg },
         });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },
