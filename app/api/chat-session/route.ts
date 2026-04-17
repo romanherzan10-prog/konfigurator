@@ -11,6 +11,10 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 
 const SESSIONS_PER_IP_PER_HOUR = 10;
+// Po 12 hodinách bez aktivity považujeme session za "vypršelou" — klient
+// dostane status: "expired" a založí novou. Zákazník si tak druhý den
+// otevře čistý chat (a ne včerejší konverzaci v půlce).
+const SESSION_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
 // ============================================================
 // POST — nová session
@@ -141,12 +145,31 @@ export async function GET(req: NextRequest) {
 
   const { data: session, error: sessErr } = await supabase
     .from("chat_sessions")
-    .select("id, status, gdpr_consent_at, extracted, started_at")
+    .select(
+      "id, status, gdpr_consent_at, extracted, started_at, last_message_at"
+    )
     .eq("id", sessionId)
     .single();
 
   if (sessErr || !session) {
     return NextResponse.json({ error: "Session nenalezena." }, { status: 404 });
+  }
+
+  // Idle expirace — pokud byla session déle než 12h neaktivní, vrátíme
+  // ji jako "expired", klient pak založí novou.
+  const lastActivity = new Date(
+    session.last_message_at ?? session.started_at
+  ).getTime();
+  const idleMs = Date.now() - lastActivity;
+  if (idleMs > SESSION_IDLE_TIMEOUT_MS && session.status === "active") {
+    await supabase
+      .from("chat_sessions")
+      .update({ status: "abandoned" })
+      .eq("id", sessionId);
+    return NextResponse.json({
+      session: { ...session, status: "expired" },
+      messages: [],
+    });
   }
 
   const { data: messages } = await supabase
