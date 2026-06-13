@@ -1,19 +1,7 @@
 "use client";
 
-/**
- * ChatAssistant — chat komponenta pro LOOOKU konfigurátor.
- *
- * Funkce:
- * - Inicializace session přes POST /api/chat-session
- * - Streaming SSE odpovědi z /api/chat
- * - GDPR souhlas (zobrazí se před odesláním první zprávy, která vede ke kontaktu)
- * - Progress stepper: Produkt → Detaily → Kalkulace → Kontakt
- * - Klikací příklady v uvítací zprávě
- * - Tool indikátor ("Hledám v katalogu...")
- * - Chat historie + localStorage pro resume
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageSquare, RotateCcw, Send, AlertCircle } from "lucide-react";
 
 type Message =
   | { role: "user"; content: string }
@@ -31,8 +19,6 @@ const STEP_LABELS: Record<StepKey, string> = {
 const WELCOME_MESSAGE =
   "Dobrý den, jsem Jarda Kužel z LOOOKU. Popište mi, co potřebujete — během pár minut vám připravím orientační cenu a poradím s výběrem. Můžete začít třeba takhle:";
 
-// Rotující "thinking" zprávy podle typu toolu — střídají se po ~2.5s,
-// aby zákazník viděl, že asistent furt pracuje, i když odpověď trvá déle.
 const TOOL_STATUS_MESSAGES: Record<string, string[]> = {
   search_products: [
     "Mrkám do katalogu…",
@@ -69,11 +55,8 @@ export default function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  // Aktivní tool: { name, startedAt } — null když žádný neběží
   const [activeTool, setActiveTool] = useState<{ name: string; startedAt: number } | null>(null);
-  // Index v rotujícím listu zpráv pro daný tool — měníme přes interval
   const [toolMessageIdx, setToolMessageIdx] = useState(0);
-  // Sekundy uplynulé od startu aktuálního toolu — tickuje každou sekundu
   const [elapsedSec, setElapsedSec] = useState(0);
   const [currentStep, setCurrentStep] = useState<StepKey>("produkt");
   const [gdprAccepted, setGdprAccepted] = useState(false);
@@ -83,192 +66,157 @@ export default function ChatAssistant() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // ----------------------------------------------------------
-  // Session init
-  // ----------------------------------------------------------
+  const startNewSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat-session", { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        setError(err.error ?? "Nepodařilo se spustit chat.");
+        return;
+      }
+      const { sessionId: newId } = await res.json();
+      setSessionId(newId);
+      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, newId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Chyba připojení.");
+    }
+  }, []);
+
+  const resetChat = useCallback(async () => {
+    const oldId = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    if (oldId) {
+      try {
+        await fetch("/api/chat-session", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: oldId, status: "abandoned" }),
+        });
+      } catch { /* best-effort */ }
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setMessages([]);
+    setInput("");
+    setError(null);
+    setActiveTool(null);
+    setGdprAccepted(false);
+    setShowGdpr(false);
+    setCurrentStep("produkt");
+    setSessionId(null);
+    await startNewSession();
+  }, [startNewSession]);
+
   useEffect(() => {
     (async () => {
       const existing = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-
       if (existing) {
-        // Zkus resume
         try {
           const res = await fetch(`/api/chat-session?id=${existing}`);
           if (res.ok) {
             const data = await res.json();
             if (data.session?.status === "active") {
               setSessionId(existing);
-              setMessages(
-                (data.messages ?? []).map((m: Message) => ({
-                  role: m.role,
-                  content: m.content,
-                }))
-              );
+              setMessages((data.messages ?? []).map((m: Message) => ({ role: m.role, content: m.content })));
               if (data.session.gdpr_consent_at) setGdprAccepted(true);
               return;
             }
           }
-        } catch {
-          // fall through to new session
-        }
+        } catch { /* fall through */ }
         localStorage.removeItem(STORAGE_KEY);
       }
-
-      // Nová session
-      try {
-        const res = await fetch("/api/chat-session", { method: "POST" });
-        if (!res.ok) {
-          const err = await res.json();
-          setError(err.error ?? "Nepodařilo se spustit chat.");
-          return;
-        }
-        const { sessionId: newId } = await res.json();
-        setSessionId(newId);
-        localStorage.setItem(STORAGE_KEY, newId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Chyba připojení.");
-      }
+      await startNewSession();
     })();
-  }, []);
+  }, [startNewSession]);
 
-  // ----------------------------------------------------------
-  // Auto-scroll na konec
-  // ----------------------------------------------------------
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, activeTool]);
 
-  // ----------------------------------------------------------
-  // Tool indicator: tickuje elapsed čas + rotuje thinking zprávu
-  // ----------------------------------------------------------
   useEffect(() => {
-    if (!activeTool) {
-      setToolMessageIdx(0);
-      setElapsedSec(0);
-      return;
-    }
-    const tick = setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - activeTool.startedAt) / 1000));
-    }, 500);
+    if (!activeTool) { setToolMessageIdx(0); setElapsedSec(0); return; }
+    const tick = setInterval(() => setElapsedSec(Math.floor((Date.now() - activeTool.startedAt) / 1000)), 500);
     const rotate = setInterval(() => {
       const list = TOOL_STATUS_MESSAGES[activeTool.name] ?? TOOL_STATUS_MESSAGES.default;
       setToolMessageIdx((i) => (i + 1) % list.length);
     }, 2500);
-    return () => {
-      clearInterval(tick);
-      clearInterval(rotate);
-    };
+    return () => { clearInterval(tick); clearInterval(rotate); };
   }, [activeTool]);
 
-  // ----------------------------------------------------------
-  // Progress stepper — jednoduchá heuristika podle počtu zpráv + obsahu
-  // ----------------------------------------------------------
   useEffect(() => {
     const userCount = messages.filter((m) => m.role === "user").length;
-    const lastAssistant = messages.filter((m) => m.role === "assistant").pop();
+    const lastAssistant = messages.filter((m) => m.role === "assistant" && m.content.trim().length > 0).pop();
     const lastText = lastAssistant?.content.toLowerCase() ?? "";
-
     if (userCount === 0) setCurrentStep("produkt");
-    else if (lastText.includes("e-mail") || lastText.includes("kontakt"))
-      setCurrentStep("kontakt");
-    else if (lastText.includes("kč") || lastText.includes("odhad"))
-      setCurrentStep("kalkulace");
+    else if (lastText.includes("jméno") && (lastText.includes("e-mail") || lastText.includes("telefon"))) setCurrentStep("kontakt");
+    else if (lastText.includes("kč") || lastText.includes("odhad") || lastText.includes("kalkulac")) setCurrentStep("kalkulace");
     else if (userCount >= 1) setCurrentStep("detaily");
   }, [messages]);
 
-  // ----------------------------------------------------------
-  // Odesílání zprávy
-  // ----------------------------------------------------------
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { skipGdpr?: boolean }) => {
       if (!sessionId || !text.trim() || isLoading) return;
-
       setError(null);
-      setInput("");
-
-      // Pokud jsme ve fázi kontakt a zákazník ještě nedal GDPR, zobraz modal
-      if (currentStep === "kontakt" && !gdprAccepted) {
+      const looksLikeContact = /@[\w.-]+\.[a-z]{2,}/i.test(text) || /\+?\d[\d\s-]{7,}/.test(text);
+      if (!opts?.skipGdpr && !gdprAccepted && (currentStep === "kontakt" || looksLikeContact)) {
         setShowGdpr(true);
-        setInput(text); // vrať zpět, ať se neztratí
+        setInput(text);
         return;
       }
-
+      setInput("");
       const userMsg: Message = { role: "user", content: text };
       setMessages((m) => [...m, userMsg, { role: "assistant", content: "", streaming: true }]);
       setIsLoading(true);
       setActiveTool(null);
-
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, message: text }),
         });
-
-        if (!res.ok || !res.body) {
-          const errText = await res.text();
-          throw new Error(`HTTP ${res.status}: ${errText}`);
-        }
-
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
         let assistantText = "";
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n\n");
           buffer = lines.pop() ?? "";
-
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
-            const payload = line.substring(6);
             try {
-              const event = JSON.parse(payload);
+              const event = JSON.parse(line.substring(6));
               if (event.type === "text") {
                 assistantText += event.text;
                 setMessages((prev) => {
                   const copy = [...prev];
-                  copy[copy.length - 1] = {
-                    role: "assistant",
-                    content: assistantText,
-                    streaming: true,
-                  };
+                  copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: true };
                   return copy;
                 });
               } else if (event.type === "tool_start") {
                 setActiveTool({ name: event.name, startedAt: Date.now() });
-                setToolMessageIdx(0);
-                setElapsedSec(0);
+                setToolMessageIdx(0); setElapsedSec(0);
               } else if (event.type === "tool_end") {
                 setActiveTool(null);
               } else if (event.type === "done") {
                 setMessages((prev) => {
                   const copy = [...prev];
-                  copy[copy.length - 1] = {
-                    role: "assistant",
-                    content: assistantText,
-                    streaming: false,
-                  };
+                  if (assistantText.trim() === "") return copy.slice(0, -1);
+                  copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: false };
                   return copy;
                 });
+                if (assistantText.trim() === "") setError("Něco se nepodařilo. Zkuste to prosím napsat jinak, nebo začněte nový chat.");
               } else if (event.type === "error") {
                 throw new Error(event.error);
               }
             } catch (parseErr) {
-              console.warn("SSE parse error:", parseErr, payload);
+              console.warn("SSE parse error:", parseErr);
             }
           }
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Chyba při odesílání.";
-        setError(msg);
+        setError(err instanceof Error ? err.message : "Chyba při odesílání.");
         setMessages((prev) => prev.slice(0, -1));
       } finally {
         setIsLoading(false);
@@ -278,72 +226,134 @@ export default function ChatAssistant() {
     [sessionId, isLoading, currentStep, gdprAccepted]
   );
 
-  // ----------------------------------------------------------
-  // GDPR accept
-  // ----------------------------------------------------------
   const acceptGdpr = async () => {
     if (!sessionId) return;
-    await fetch("/api/chat-session", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, gdpr_consent: true }),
-    });
+    const pendingText = input.trim();
+    try {
+      await fetch("/api/chat-session", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, gdpr_consent: true }),
+      });
+    } catch { /* pokračuj */ }
     setGdprAccepted(true);
     setShowGdpr(false);
-    // Pokračuj v odeslání zprávy, kterou jsme zachytili
-    if (input.trim()) {
-      setTimeout(() => sendMessage(input), 100);
-    }
+    if (pendingText) { setInput(""); sendMessage(pendingText, { skipGdpr: true }); }
   };
 
-  // ----------------------------------------------------------
-  // UI render
-  // ----------------------------------------------------------
+  const stepKeys = Object.keys(STEP_LABELS) as StepKey[];
+  const currentStepIdx = stepKeys.indexOf(currentStep);
+
   return (
-    <div className="flex flex-col h-full max-h-[80vh] w-full max-w-3xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-      {/* Header s progress stepperem */}
-      <div className="border-b border-slate-200 bg-slate-50/50 px-6 py-4">
-        <div className="flex items-center justify-between">
+    <div
+      className="relative flex flex-col w-full max-w-3xl mx-auto overflow-hidden"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-2xl)",
+        boxShadow: "var(--shadow-xl)",
+        height: "min(640px, 80vh)",
+      }}
+    >
+      {/* ── Header ───────────────────────────────────────── */}
+      <div
+        className="shrink-0 px-5 pt-4 pb-3"
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "linear-gradient(180deg, var(--primary-50, #EFF6FF) 0%, var(--surface) 100%)",
+        }}
+      >
+        {/* Agent info + new chat */}
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-semibold shadow-md">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md"
+                style={{ background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)" }}
+              >
                 JK
               </div>
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+              <div
+                className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
+                style={{ background: "#10B981" }}
+              />
             </div>
             <div>
-              <div className="font-semibold text-slate-900">Jarda Kužel</div>
-              <div className="text-xs text-slate-500">Obchodník LOOOKU · pomůže s poptávkou</div>
+              <div className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>
+                Jarda Kužel
+              </div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                Obchodník LOOOKU · pomůže s poptávkou
+              </div>
             </div>
           </div>
+
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!isLoading || confirm("Opravdu chcete začít nový chat?")) resetChat();
+              }}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-all cursor-pointer disabled:opacity-40"
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--border)",
+                color: "var(--muted)",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.color = "var(--primary)";
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100, #DBEAFE)";
+                (e.currentTarget as HTMLElement).style.background = "var(--primary-50, #EFF6FF)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.color = "var(--muted)";
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                (e.currentTarget as HTMLElement).style.background = "var(--surface)";
+              }}
+            >
+              <RotateCcw className="w-3 h-3" />
+              Nový chat
+            </button>
+          )}
         </div>
-        <div className="mt-4 flex items-center gap-2">
-          {(Object.keys(STEP_LABELS) as StepKey[]).map((step, idx) => {
+
+        {/* Progress stepper */}
+        <div className="flex items-center gap-0">
+          {stepKeys.map((step, idx) => {
             const isActive = step === currentStep;
-            const isPast =
-              Object.keys(STEP_LABELS).indexOf(currentStep) > idx;
+            const isPast = currentStepIdx > idx;
             return (
               <div key={step} className="flex items-center flex-1">
-                <div
-                  className={`flex items-center gap-2 ${
-                    isActive ? "text-blue-700" : isPast ? "text-slate-600" : "text-slate-400"
-                  }`}
-                >
+                <div className="flex items-center gap-1.5 min-w-0">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold border ${
-                      isActive
-                        ? "bg-blue-600 text-white border-blue-600"
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-all duration-300"
+                    style={{
+                      background: isActive
+                        ? "var(--accent)"
                         : isPast
-                        ? "bg-slate-200 text-slate-700 border-slate-300"
-                        : "bg-white border-slate-300"
-                    }`}
+                        ? "var(--primary)"
+                        : "var(--surface-2)",
+                      color: isActive || isPast ? "#fff" : "var(--muted-light)",
+                      boxShadow: isActive ? "0 2px 8px rgba(245,158,11,0.4)" : "none",
+                    }}
                   >
-                    {idx + 1}
+                    {isPast ? "✓" : idx + 1}
                   </div>
-                  <span className="text-xs font-medium whitespace-nowrap">{STEP_LABELS[step]}</span>
+                  <span
+                    className="text-xs font-medium hidden sm:block whitespace-nowrap"
+                    style={{
+                      color: isActive ? "var(--accent)" : isPast ? "var(--primary)" : "var(--muted-light)",
+                    }}
+                  >
+                    {STEP_LABELS[step]}
+                  </span>
                 </div>
                 {idx < 3 && (
-                  <div className={`flex-1 h-px mx-2 ${isPast ? "bg-slate-300" : "bg-slate-200"}`} />
+                  <div
+                    className="flex-1 h-px mx-2 transition-all duration-300"
+                    style={{ background: isPast ? "var(--primary-100, #DBEAFE)" : "var(--border)" }}
+                  />
                 )}
               </div>
             );
@@ -351,24 +361,49 @@ export default function ChatAssistant() {
         </div>
       </div>
 
-      {/* Messages area */}
+      {/* ── Messages ─────────────────────────────────────── */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-50/30"
+        className="flex-1 overflow-y-auto px-5 py-4 space-y-3"
+        style={{ background: "var(--surface-2)" }}
       >
         {/* Welcome + examples */}
         {messages.length === 0 && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl px-4 py-3 shadow-sm border border-slate-200 max-w-[85%]">
-              <p className="text-slate-800 text-sm whitespace-pre-wrap">{WELCOME_MESSAGE}</p>
+          <div className="space-y-3">
+            <div
+              className="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[86%]"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                boxShadow: "var(--shadow-sm)",
+              }}
+            >
+              <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
+                {WELCOME_MESSAGE}
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 pl-1">
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex}
                   onClick={() => sendMessage(ex)}
                   disabled={!sessionId || isLoading}
-                  className="text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-full text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 disabled:opacity-50 transition"
+                  className="text-xs px-3 py-1.5 rounded-full border font-medium transition-all cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "var(--surface)",
+                    borderColor: "var(--border)",
+                    color: "var(--muted)",
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.background = "var(--primary-50, #EFF6FF)";
+                    (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100, #DBEAFE)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--primary)";
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.background = "var(--surface)";
+                    (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--muted)";
+                  }}
                 >
                   {ex}
                 </button>
@@ -379,56 +414,88 @@ export default function ChatAssistant() {
 
         {/* Messages */}
         {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+          <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[85%] rounded-xl px-4 py-3 shadow-sm whitespace-pre-wrap text-sm leading-relaxed ${
+              className="max-w-[86%] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+              style={
                 msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-slate-800 border border-slate-200"
-              }`}
+                  ? {
+                      background: "var(--primary)",
+                      color: "#fff",
+                      borderRadius: "var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl)",
+                      boxShadow: "var(--shadow-sm)",
+                    }
+                  : {
+                      background: "var(--surface)",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm)",
+                      boxShadow: "var(--shadow-sm)",
+                    }
+              }
             >
               {msg.content}
               {msg.role === "assistant" && "streaming" in msg && msg.streaming && (
-                <span className="inline-block w-2 h-4 ml-1 bg-slate-400 animate-pulse" />
+                <span
+                  className="inline-block w-1.5 h-4 ml-1 rounded-sm animate-pulse"
+                  style={{ background: "var(--primary-light)" }}
+                />
               )}
             </div>
           </div>
         ))}
 
-        {/* Tool status indicator — rotující zprávy + elapsed čas */}
+        {/* Tool indicator */}
         {activeTool && (() => {
-          const list =
-            TOOL_STATUS_MESSAGES[activeTool.name] ?? TOOL_STATUS_MESSAGES.default;
-          const message = list[toolMessageIdx % list.length];
+          const list = TOOL_STATUS_MESSAGES[activeTool.name] ?? TOOL_STATUS_MESSAGES.default;
           return (
             <div className="flex justify-start">
-              <div className="bg-blue-50 text-blue-800 text-sm px-4 py-2.5 rounded-2xl border border-blue-200 shadow-sm flex items-center gap-3 max-w-[85%]">
+              <div
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm rounded-2xl rounded-tl-sm"
+                style={{
+                  background: "var(--primary-50, #EFF6FF)",
+                  border: "1px solid var(--primary-100, #DBEAFE)",
+                  color: "var(--primary)",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  {[0, 150, 300].map((d) => (
+                    <span
+                      key={d}
+                      className="w-1.5 h-1.5 rounded-full animate-bounce"
+                      style={{ background: "var(--primary)", animationDelay: `${d}ms` }}
+                    />
+                  ))}
                 </div>
-                <span className="font-medium">{message}</span>
+                <span className="font-medium">{list[toolMessageIdx % list.length]}</span>
                 {elapsedSec >= 3 && (
-                  <span className="text-xs text-blue-500 tabular-nums">{elapsedSec}s</span>
+                  <span className="text-xs opacity-60 tabular-nums">{elapsedSec}s</span>
                 )}
               </div>
             </div>
           );
         })()}
 
-        {/* Loading bez aktivního toolu — pauza mezi text streamingem a tool callem */}
+        {/* Typing without tool */}
         {isLoading && !activeTool && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && (
           <div className="flex justify-start">
-            <div className="bg-white text-slate-500 text-sm px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
+            <div
+              className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-2xl rounded-tl-sm"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--muted)",
+                boxShadow: "var(--shadow-sm)",
+              }}
+            >
+              {[0, 150, 300].map((d) => (
+                <span
+                  key={d}
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: "var(--muted-light)", animationDelay: `${d}ms` }}
+                />
+              ))}
               <span>Jarda píše…</span>
             </div>
           </div>
@@ -436,19 +503,27 @@ export default function ChatAssistant() {
 
         {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
-            ⚠️ {error}
+          <div
+            className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm"
+            style={{
+              background: "#FEF2F2",
+              border: "1px solid #FECACA",
+              color: "#DC2626",
+            }}
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            {error}
           </div>
         )}
       </div>
 
-      {/* Input */}
-      <div className="border-t border-slate-200 bg-white px-4 py-3">
+      {/* ── Input ────────────────────────────────────────── */}
+      <div
+        className="shrink-0 px-4 py-3"
+        style={{ borderTop: "1px solid var(--border)", background: "var(--surface)" }}
+      >
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (input.trim()) sendMessage(input);
-          }}
+          onSubmit={(e) => { e.preventDefault(); if (input.trim()) sendMessage(input); }}
           className="flex gap-2 items-end"
         >
           <textarea
@@ -464,48 +539,116 @@ export default function ChatAssistant() {
             disabled={!sessionId || isLoading}
             placeholder={sessionId ? "Napište zprávu…" : "Načítám chat…"}
             rows={1}
-            className="flex-1 resize-none border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-            style={{ maxHeight: "120px" }}
+            className="flex-1 resize-none text-sm outline-none transition-all"
+            style={{
+              background: "var(--surface-2)",
+              border: "1.5px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              padding: "10px 14px",
+              color: "var(--foreground)",
+              maxHeight: "120px",
+              fontFamily: "inherit",
+            }}
+            onFocus={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--primary)";
+              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(30,64,175,0.08)";
+              (e.currentTarget as HTMLElement).style.background = "var(--surface)";
+            }}
+            onBlur={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+              (e.currentTarget as HTMLElement).style.boxShadow = "none";
+              (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
+            }}
           />
           <button
             type="submit"
             disabled={!sessionId || isLoading || !input.trim()}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
+            className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "var(--primary)",
+              color: "#fff",
+              boxShadow: "var(--shadow-sm)",
+            }}
+            onMouseEnter={e => {
+              if (!(e.currentTarget as HTMLButtonElement).disabled) {
+                (e.currentTarget as HTMLElement).style.background = "var(--primary-hover)";
+                (e.currentTarget as HTMLElement).style.transform = "scale(1.05)";
+              }
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "var(--primary)";
+              (e.currentTarget as HTMLElement).style.transform = "scale(1)";
+            }}
           >
-            {isLoading ? "…" : "Odeslat"}
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
           </button>
         </form>
+        <p className="text-[11px] mt-2 text-center" style={{ color: "var(--muted-light)" }}>
+          Enter pro odeslání · Shift+Enter pro nový řádek
+        </p>
       </div>
 
-      {/* GDPR modal */}
+      {/* ── GDPR Modal ───────────────────────────────────── */}
       {showGdpr && (
-        <div className="absolute inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900 mb-3">
-              Souhlas se zpracováním údajů
-            </h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Pro přípravu a zaslání nezávazné nabídky potřebujeme zpracovat váš kontakt
-              (jméno, e-mail, telefon). Údaje použijeme výhradně pro odpověď na tuto poptávku.
-              Více v{" "}
-              <a href="/gdpr" className="text-blue-600 underline" target="_blank">
-                zásadách ochrany osobních údajů
-              </a>
-              .
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowGdpr(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-sm hover:bg-slate-50"
+        <div
+          className="absolute inset-0 flex items-center justify-center p-4 z-50"
+          style={{ background: "rgba(15, 23, 42, 0.5)", backdropFilter: "blur(4px)" }}
+        >
+          <div
+            className="w-full max-w-sm"
+            style={{
+              background: "var(--surface)",
+              borderRadius: "var(--radius-2xl)",
+              boxShadow: "var(--shadow-xl)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div className="p-6">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: "var(--primary-50, #EFF6FF)", color: "var(--primary)" }}
               >
-                Zpět
-              </button>
-              <button
-                onClick={acceptGdpr}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium"
-              >
-                Souhlasím a pokračovat
-              </button>
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--foreground)" }}>
+                Souhlas se zpracováním údajů
+              </h3>
+              <p className="text-sm mb-5 leading-relaxed" style={{ color: "var(--muted)" }}>
+                Pro přípravu a zaslání nezávazné nabídky potřebujeme zpracovat váš kontakt
+                (jméno, e-mail, telefon). Údaje použijeme výhradně pro odpověď na tuto poptávku.
+                Více v{" "}
+                <a href="/gdpr" className="underline" style={{ color: "var(--primary)" }} target="_blank">
+                  zásadách ochrany osobních údajů
+                </a>
+                .
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowGdpr(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all cursor-pointer"
+                  style={{
+                    background: "var(--surface)",
+                    borderColor: "var(--border)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Zpět
+                </button>
+                <button
+                  onClick={acceptGdpr}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white transition-all cursor-pointer"
+                  style={{
+                    background: "var(--primary)",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  Souhlasím a pokračovat
+                </button>
+              </div>
             </div>
           </div>
         </div>
