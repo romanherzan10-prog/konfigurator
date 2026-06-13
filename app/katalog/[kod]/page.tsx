@@ -328,15 +328,29 @@ export default function ProduktDetailPage({
           )}
 
           {/* CTA */}
-          <a
-            href={`/?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary-hover transition-colors"
-          >
-            Přidat do poptávky
-          </a>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <a
+              href={`/navrhnout/${encodeURIComponent(produkt.kod)}`}
+              className="inline-flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-colors text-white"
+              style={{ background: "var(--primary)" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" /><circle cx="11" cy="11" r="2" />
+              </svg>
+              Navrhnout potisk
+            </a>
+            <a
+              href={`/?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
+              className="inline-flex items-center gap-2 px-6 py-3 font-medium rounded-lg transition-colors"
+              style={{ background: "var(--surface)", color: "var(--foreground)", border: "1.5px solid var(--border)" }}
+            >
+              Přidat do poptávky
+            </a>
+          </div>
           <a
             href="/katalog"
-            className="inline-flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:border-gray-400 transition-colors"
+            className="inline-flex items-center gap-2 text-sm font-medium mt-1"
+            style={{ color: "var(--muted)" }}
           >
             ← Zpět do katalogu
           </a>
