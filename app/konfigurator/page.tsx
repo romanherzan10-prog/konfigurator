@@ -127,7 +127,16 @@ function CartItemCard({
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors cursor-pointer"
       >
-        <span className="text-2xl">{PRODUCT_ICONS[item.productType]}</span>
+        {item.nahledUrl ? (
+          <img
+            src={item.nahledUrl}
+            alt="Náhled návrhu"
+            className="w-12 h-12 rounded-lg object-contain shrink-0"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+          />
+        ) : (
+          <span className="text-2xl">{PRODUCT_ICONS[item.productType]}</span>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm truncate">{productLabel}</span>
@@ -384,12 +393,19 @@ function HomeInner() {
     const nazev = searchParams.get("nazev");
 
     if (produktKod && cena && nazev) {
+      const typParam = searchParams.get("typ"); // potisk | vysivka (z customizeru)
+      const navrh = searchParams.get("navrh"); // R2 URL náhledu návrhu
+      const serviceType =
+        typParam === "vysivka" ? "embroidery" : typParam === "potisk" ? "print" : undefined;
+
       const newItem = createCartItemFromCatalog({
         kod: produktKod,
         nazev: decodeURIComponent(nazev),
         cena: Number(cena),
         barva: searchParams.get("barva") ? decodeURIComponent(searchParams.get("barva")!) : null,
         kategorie: searchParams.get("kategorie") ? decodeURIComponent(searchParams.get("kategorie")!) : null,
+        serviceType,
+        nahledUrl: navrh ? decodeURIComponent(navrh) : null,
       });
 
       setItems((prev) => {
@@ -398,9 +414,13 @@ function HomeInner() {
         return next;
       });
       setExpandedId(newItem.id);
-      setToast(`„${decodeURIComponent(nazev)}" přidán do poptávky`);
+      setToast(
+        navrh
+          ? `Návrh „${decodeURIComponent(nazev)}" přidán do košíku`
+          : `„${decodeURIComponent(nazev)}" přidán do košíku`
+      );
       setTimeout(() => setToast(null), 4000);
-      window.history.replaceState({}, "", "/");
+      window.history.replaceState({}, "", "/konfigurator");
     }
   }, [searchParams]);
 
@@ -493,10 +513,14 @@ function HomeInner() {
         typ_zpracovani: item.serviceType,
         mnozstvi: item.quantity,
         logo_umisteni: item.serviceType === "clean" ? null : item.placements,
+        nahled_url: item.nahledUrl ?? null,
         cena_ks_s_dph: est.unitPriceWithDph,
         cena_celkem_s_dph: est.totalPriceWithDph,
       };
     });
+
+    // Náhledy návrhů z customizeru (R2) — první jako hlavní, všechny jako odkazy
+    const nahledy = items.map((i) => i.nahledUrl).filter(Boolean) as string[];
 
     const { error: dbError } = await getSupabase().from("poptavky").insert({
       jmeno: firstName.trim(),
@@ -509,8 +533,10 @@ function HomeInner() {
       termin: neededBy || null,
       logo_umisteni: items[0].serviceType === "clean" ? null : items[0].placements,
       poznamka_umisteni: placementNotes.trim() || null,
+      logo_soubor_url: nahledy[0] ?? null,
       dalsi_info: [
         additionalInfo.trim(),
+        nahledy.length > 0 ? `\n--- Náhledy návrhů (${nahledy.length}) ---\n${nahledy.join("\n")}` : "",
         items.length > 1 ? `\n--- ${items.length} produktů v poptávce ---\n${JSON.stringify(produktyDetail, null, 2)}` : "",
       ]
         .filter(Boolean)

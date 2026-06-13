@@ -340,11 +340,11 @@ export default function ProduktDetailPage({
               Navrhnout potisk
             </a>
             <a
-              href={`/?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
+              href={`/konfigurator?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
               className="inline-flex items-center gap-2 px-6 py-3 font-medium rounded-lg transition-colors"
               style={{ background: "var(--surface)", color: "var(--foreground)", border: "1.5px solid var(--border)" }}
             >
-              Přidat do poptávky
+              Přidat do košíku
             </a>
           </div>
           <a

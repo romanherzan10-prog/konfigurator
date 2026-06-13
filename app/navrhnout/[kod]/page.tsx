@@ -273,7 +273,7 @@ export default function NavrhnoutPage({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Uložení selhalo.");
 
-      // Přejít do poptávky s návrhem
+      // Přejít do košíku s návrhem
       const qp = new URLSearchParams({
         produkt: produkt.kod,
         nazev: produkt.nazev,
@@ -283,7 +283,7 @@ export default function NavrhnoutPage({
       });
       if (barva) qp.set("barva", barva);
       if (produkt.kategorie) qp.set("kategorie", produkt.kategorie.nazev);
-      window.location.href = `/?${qp.toString()}`;
+      window.location.href = `/konfigurator?${qp.toString()}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Neznámá chyba.");
       setSaving(false);
