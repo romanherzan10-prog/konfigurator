@@ -60,9 +60,21 @@ const features = [
 ];
 
 const steps = [
-  { n: "1", title: "Popište potřebu", desc: "Řekněte Jardovi, co hledáte — Účel, počet kusů, rozpočet." },
-  { n: "2", title: "Jarda doporučí", desc: "AI asistent prohledá katalog a navrhne nejlepší produkty pro vás." },
-  { n: "3", title: "Potvrďte a odešlete", desc: "Schvalte výběr, zadejte kontakt — dostanete konkrétní nabídku." },
+  {
+    n: "1",
+    title: "Vyberte produkt",
+    desc: "Procházejte 3 600+ produktů v katalogu — filtrujte podle barvy, ceny i gramáže. Nebo nechte poradit AI asistenta.",
+  },
+  {
+    n: "2",
+    title: "Navrhněte potisk",
+    desc: "U produktu klikněte na tlačítko Navrhnout potisk, nahrajte logo a umístěte ho. Hned vidíte náhled na produktu.",
+  },
+  {
+    n: "3",
+    title: "Košík → poptávka",
+    desc: "Návrh padne do košíku. Vyplňte kontakt a odešlete — připravíme nabídku se všemi podklady.",
+  },
 ];
 
 const proofs = [
@@ -211,6 +223,18 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/katalog" className="btn btn-primary px-6 py-3 text-base">
+              Procházet katalog
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </Link>
+            <a href="#chat" className="btn btn-ghost px-6 py-3 text-base">
+              Zeptat se asistenta
+            </a>
           </div>
         </div>
       </section>

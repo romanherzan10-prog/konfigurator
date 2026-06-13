@@ -13,6 +13,8 @@ export interface CartItem {
   serviceType: ServiceType;
   quantity: number;
   placements: LogoPlacement[];
+  // Náhled návrhu z customizeru (R2 URL) — pokud zákazník navrhl potisk
+  nahledUrl?: string | null;
 }
 
 const STORAGE_KEY = "loooku_cart";
@@ -34,11 +36,13 @@ export function loadCart(): CartItem[] {
 export function saveCart(items: CartItem[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  window.dispatchEvent(new Event("cart-changed"));
 }
 
 export function clearCart() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new Event("cart-changed"));
 }
 
 // Mapování kategorie z katalogu → typ produktu v konfigurátoru
@@ -62,6 +66,8 @@ export function createCartItemFromCatalog(params: {
   cena: number;
   barva: string | null;
   kategorie: string | null;
+  serviceType?: ServiceType;
+  nahledUrl?: string | null;
 }): CartItem {
   return {
     id: generateId(),
@@ -71,9 +77,10 @@ export function createCartItemFromCatalog(params: {
     catalogBarva: params.barva,
     catalogKategorie: params.kategorie,
     productType: kategorieToType(params.kategorie),
-    serviceType: "print",
+    serviceType: params.serviceType ?? "print",
     quantity: 25,
     placements: [{ location: "leve-prso", size: "male" as const }],
+    nahledUrl: params.nahledUrl ?? null,
   };
 }
 
