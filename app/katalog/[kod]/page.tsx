@@ -173,15 +173,18 @@ export default function ProduktDetailPage({
         <span className="text-gray-900">{produkt.nazev}</span>
       </nav>
 
-      <div className="flex flex-col lg:flex-row gap-10">
-        {/* Obrázek vlevo */}
-        <div className="lg:w-1/2">
-          <div className="aspect-square bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden border border-gray-100">
+      <div className="flex flex-col lg:flex-row gap-10 lg:items-start">
+        {/* Obrázek vlevo — na desktopu sticky */}
+        <div className="lg:w-1/2 lg:sticky lg:top-24 lg:self-start w-full">
+          <div
+            className="aspect-square rounded-2xl flex items-center justify-center overflow-hidden"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+          >
             {displayImage ? (
               <img
                 src={displayImage}
                 alt={selectedBarva ? `${produkt.nazev} - ${selectedBarva.nazev}` : produkt.nazev}
-                className="w-full h-full object-contain p-4"
+                className="w-full h-full object-contain p-6"
               />
             ) : (
               <span className="text-8xl opacity-20">👕</span>
