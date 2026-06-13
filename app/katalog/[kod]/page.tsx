@@ -8,17 +8,6 @@ interface SkladItem {
   id: string;
   velikost: string;
   skladem: number;
-  cena_nakupni: number | null;
-}
-
-interface Cenik {
-  cena_1: number | null;
-  cena_10: number | null;
-  cena_100: number | null;
-  cena_500: number | null;
-  cena_1000: number | null;
-  barva: string | null;
-  velikost: string | null;
 }
 
 interface Barva {
@@ -92,7 +81,8 @@ export default function ProduktDetailPage({
 }) {
   const { kod } = use(params);
   const [produkt, setProdukt] = useState<ProduktDetail | null>(null);
-  const [ceniky, setCeniky] = useState<Cenik[]>([]);
+  const [cenaOd, setCenaOd] = useState<number | null>(null);
+  const [cenaDo, setCenaDo] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [selectedBarvaId, setSelectedBarvaId] = useState<string | null>(null);
@@ -101,27 +91,20 @@ export default function ProduktDetailPage({
     async function load() {
       try {
         const sb = getSupabase();
-        const [{ data, error }, cenikRes] = await Promise.all([
-          sb
-            .from("produkty")
-            .select(
-              "*, znacka:znacky(*), kategorie:kategorie(*), barvy:produkt_barvy(*, sklad:produkt_sklad(*))"
-            )
-            .eq("kod", kod)
-            .eq("aktivni", true)
-            .single(),
-          sb
-            .from("ceniky")
-            .select("cena_1, cena_10, cena_100, cena_500, cena_1000, barva, velikost")
-            .eq("katalogove_cislo", kod),
-        ]);
+        const { data, error } = await sb
+          .from("produkty")
+          .select(
+            "id, kod, nazev, popis, material, gramaz, hmotnost_g, obrazek_url, znacka:znacky(nazev, logo_url), kategorie:kategorie(nazev), barvy:produkt_barvy(id, nazev, hex_kod, obrazek_url, kod_barvy, sklad:produkt_sklad(id, velikost, skladem))"
+          )
+          .eq("kod", kod)
+          .eq("aktivni", true)
+          .single();
 
         if (error || !data) {
           setNotFound(true);
         } else {
-          const p = data as ProduktDetail;
+          const p = data as unknown as ProduktDetail;
           setProdukt(p);
-          setCeniky((cenikRes.data as Cenik[]) || []);
           if (p.barvy && p.barvy.length > 0) {
             setSelectedBarvaId(p.barvy[0].id);
           }
@@ -134,6 +117,24 @@ export default function ProduktDetailPage({
     }
     load();
   }, [kod]);
+
+  useEffect(() => {
+    if (!produkt) return;
+    const barvaParam = produkt.barvy?.find((b) => b.id === selectedBarvaId)?.nazev;
+    const url = `/api/produkt-price/${encodeURIComponent(kod)}${
+      barvaParam ? `?barva=${encodeURIComponent(barvaParam)}` : ""
+    }`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { cenaOd: number | null; cenaDo: number | null } | null) => {
+        setCenaOd(j?.cenaOd ?? null);
+        setCenaDo(j?.cenaDo ?? null);
+      })
+      .catch(() => {
+        setCenaOd(null);
+        setCenaDo(null);
+      });
+  }, [kod, selectedBarvaId, produkt]);
 
   if (loading) return <DetailSkeleton />;
 
@@ -159,18 +160,6 @@ export default function ProduktDetailPage({
   const displayImage = selectedBarva?.obrazek_url || produkt.obrazek_url || null;
   const skladItems = selectedBarva?.sklad ? [...selectedBarva.sklad].sort(sortVelikosti) : [];
 
-  // Doporučená cena = VK1000 (nákupní při 1000ks) × 2
-  const selectedBarvaNazev = selectedBarva?.nazev?.toLowerCase() || null;
-  const relevantniCeniky = ceniky.filter(c =>
-    !c.barva || !selectedBarvaNazev || c.barva.toLowerCase() === selectedBarvaNazev
-  );
-
-  const doporuceneCeny = relevantniCeniky
-    .map(c => c.cena_1000 != null && c.cena_1000 > 0 ? Math.round(c.cena_1000 * 2) : null)
-    .filter((v): v is number => v != null);
-
-  const cenaOd = doporuceneCeny.length > 0 ? Math.min(...doporuceneCeny) : null;
-  const cenaDo = doporuceneCeny.length > 1 ? Math.max(...doporuceneCeny) : null;
   const hasCeny = cenaOd != null;
 
   return (
