@@ -307,13 +307,14 @@ export default function KatalogPage() {
             <div>
               {filterLabel("Vyhledávání")}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--muted-light)" }} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: "var(--muted)" }} />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Název, kód nebo značka…"
-                  className="input pl-9 text-sm"
+                  className="input text-sm"
+                  style={{ paddingLeft: "2.5rem" }}
                 />
               </div>
             </div>
