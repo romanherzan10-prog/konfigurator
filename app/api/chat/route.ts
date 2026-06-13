@@ -21,6 +21,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { CHAT_TOOLS, executeTool } from "@/lib/chat/tools";
 import { buildSystemPrompt } from "@/lib/chat/system-prompt";
+import { hashIp, extractIp } from "@/lib/chat/ip-hash";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -67,15 +68,22 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
-  // 1) Ověř session — musí existovat a být aktivní
+  // 1) Ověř session — musí existovat, být aktivní A patřit requestorovi
+  const requesterIpHash = hashIp(extractIp(req));
   const { data: session, error: sessErr } = await supabase
     .from("chat_sessions")
-    .select("id, status, message_count, total_input_tokens, total_output_tokens")
+    .select(
+      "id, status, message_count, total_input_tokens, total_output_tokens, ip_hash"
+    )
     .eq("id", sessionId)
     .single();
 
   if (sessErr || !session) {
     return sseError("Session neexistuje nebo vypršela.", 404);
+  }
+  if (session.ip_hash && session.ip_hash !== requesterIpHash) {
+    // Někdo jiný se pokouší psát do cizí session.
+    return sseError("Přístup zamítnut.", 403);
   }
   if (session.status !== "active") {
     return sseError("Session není aktivní.", 403);

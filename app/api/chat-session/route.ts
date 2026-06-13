@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import crypto from "crypto";
+import { hashIp, extractIp } from "@/lib/chat/ip-hash";
 
 export const runtime = "nodejs";
 
@@ -23,10 +23,7 @@ const SESSION_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = extractIp(req);
   const userAgent = req.headers.get("user-agent") ?? "unknown";
   const ipHash = hashIp(ip);
 
@@ -95,6 +92,20 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Chybí sessionId." }, { status: 400 });
   }
 
+  const requesterIpHash = hashIp(extractIp(req));
+  const { data: existing } = await supabase
+    .from("chat_sessions")
+    .select("ip_hash")
+    .eq("id", body.sessionId)
+    .single();
+
+  if (!existing) {
+    return NextResponse.json({ error: "Session nenalezena." }, { status: 404 });
+  }
+  if (existing.ip_hash && existing.ip_hash !== requesterIpHash) {
+    return NextResponse.json({ error: "Přístup zamítnut." }, { status: 403 });
+  }
+
   const updates: Record<string, unknown> = {
     last_message_at: new Date().toISOString(),
   };
@@ -143,16 +154,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Chybí id." }, { status: 400 });
   }
 
+  const requesterIpHash = hashIp(extractIp(req));
+
   const { data: session, error: sessErr } = await supabase
     .from("chat_sessions")
     .select(
-      "id, status, gdpr_consent_at, extracted, started_at, last_message_at"
+      "id, status, gdpr_consent_at, extracted, started_at, last_message_at, ip_hash"
     )
     .eq("id", sessionId)
     .single();
 
   if (sessErr || !session) {
     return NextResponse.json({ error: "Session nenalezena." }, { status: 404 });
+  }
+
+  // Ownership check — session smí číst jen původce (shoda IP-hash).
+  // Bez toho by kdokoli se session ID dostal k celé historii konverzace.
+  if (session.ip_hash && session.ip_hash !== requesterIpHash) {
+    return NextResponse.json({ error: "Přístup zamítnut." }, { status: 403 });
   }
 
   // Idle expirace — pokud byla session déle než 12h neaktivní, vrátíme
@@ -179,20 +198,12 @@ export async function GET(req: NextRequest) {
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: true });
 
+  // Neposílej ip_hash zpět klientovi
+  const { ip_hash: _ipHash, ...safeSession } = session;
+  void _ipHash;
+
   return NextResponse.json({
-    session,
+    session: safeSession,
     messages: messages ?? [],
   });
-}
-
-// ============================================================
-// Helpers
-// ============================================================
-
-function hashIp(ip: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(ip + (process.env.IP_HASH_SALT ?? "konfigurator-salt"))
-    .digest("hex")
-    .substring(0, 32);
 }
