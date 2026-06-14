@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { MerchGrid } from "@/components/MerchGrid";
 import {
   Search,
   SlidersHorizontal,
@@ -109,6 +110,7 @@ export default function KatalogPage() {
   const [cenaMax, setCenaMax] = useState("");
   const [sortBy, setSortBy] = useState("nazev");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [zdroj, setZdroj] = useState<"textil" | "merch">("textil");
 
   const offsetRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -269,6 +271,34 @@ export default function KatalogPage() {
         </div>
       </div>
 
+      {/* Přepínač: Textil na potisk / Merch */}
+      <div
+        className="inline-flex p-1 rounded-xl mb-6"
+        style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+      >
+        {([
+          { key: "textil", label: "Textil na potisk" },
+          { key: "merch", label: "Merch / Doplňky" },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setZdroj(t.key)}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              background: zdroj === t.key ? "var(--surface)" : "transparent",
+              color: zdroj === t.key ? "var(--primary)" : "var(--muted)",
+              boxShadow: zdroj === t.key ? "var(--shadow-sm)" : "none",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {zdroj === "merch" ? (
+        <MerchGrid />
+      ) : (
       <div className="flex flex-col lg:flex-row gap-8">
         {/* ── Sidebar ──────────────────────────────────── */}
         <aside
@@ -501,6 +531,7 @@ export default function KatalogPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
