@@ -78,7 +78,18 @@ export interface MappedPrintify {
   }[];
   min_cena: number | null;
   max_cena: number | null;
+  mena: string;
   visible: boolean;
+}
+
+// Přepočet ceny z Printify (USD) na české maloobchodní CZK.
+// PRINTIFY_USD_CZK = kurz, PRINTIFY_MARKUP = přirážka (Printify cena už je retail → default 1).
+// Zaokrouhlení nahoru na celé desetikoruny pro hezké ceny.
+function usdToCzk(usd: number): number {
+  const rate = Number(process.env.PRINTIFY_USD_CZK) || 23.5;
+  const markup = Number(process.env.PRINTIFY_MARKUP) || 1;
+  const czk = usd * rate * markup;
+  return Math.ceil(czk / 10) * 10;
 }
 
 export function mapProduct(p: PrintifyProduct): MappedPrintify {
@@ -110,7 +121,7 @@ export function mapProduct(p: PrintifyProduct): MappedPrintify {
     return {
       id: v.id,
       nazev: v.title,
-      cena: Math.round(v.price) / 100,
+      cena: usdToCzk(Math.round(v.price) / 100),
       color: colorId ? titleOf(colorId) : null,
       size: sizeId ? titleOf(sizeId) : null,
     };
@@ -132,6 +143,7 @@ export function mapProduct(p: PrintifyProduct): MappedPrintify {
     variants,
     min_cena: ceny.length ? Math.min(...ceny) : null,
     max_cena: ceny.length ? Math.max(...ceny) : null,
+    mena: "CZK",
     visible: p.visible !== false,
   };
 }
