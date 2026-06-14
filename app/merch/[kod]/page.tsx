@@ -188,7 +188,7 @@ export default function MerchDetailPage({
             </a>
           </div>
           <p className="text-xs" style={{ color: "var(--muted-light)" }}>
-            Ceny jsou orientační (z Printify). Finální cenu a dostupnost potvrdíme v nabídce.
+            Uvedené ceny jsou bez potisku. Finální cenu vč. potisku a dostupnost potvrdíme v nabídce.
           </p>
         </div>
       </div>
