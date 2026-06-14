@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
     parsed.protocol !== "https:" ||
     !(
       parsed.hostname.endsWith(".r2.dev") ||
-      parsed.hostname.endsWith(".r2.cloudflarestorage.com")
+      parsed.hostname.endsWith(".r2.cloudflarestorage.com") ||
+      parsed.hostname.endsWith(".printify.com") ||
+      parsed.hostname.endsWith(".printify.io")
     )
   ) {
     return NextResponse.json({ error: "Nepovolený zdroj." }, { status: 403 });

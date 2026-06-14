@@ -73,6 +73,38 @@ export default function NavrhnoutPage({
     async function load() {
       try {
         const sb = getSupabase();
+
+        // Merch produkt (Printify) — kód PF-...
+        if (kod.startsWith("PF-")) {
+          const { data, error: err } = await sb
+            .from("printify_produkty")
+            .select("kod, nazev, obrazek_url, barvy")
+            .eq("kod", kod)
+            .eq("visible", true)
+            .single();
+          if (err || !data) {
+            setNotFound(true);
+          } else {
+            const pf = data as { kod: string; nazev: string; obrazek_url: string | null; barvy: { nazev: string; hex: string | null }[] };
+            const p: ProduktDetail = {
+              id: pf.kod,
+              kod: pf.kod,
+              nazev: pf.nazev,
+              obrazek_url: pf.obrazek_url,
+              kategorie: { nazev: "Merch" },
+              barvy: (pf.barvy ?? []).map((b, i) => ({
+                id: String(i),
+                nazev: b.nazev,
+                hex_kod: b.hex,
+                obrazek_url: null,
+              })),
+            };
+            setProdukt(p);
+            if (p.barvy.length > 0) setSelectedBarvaId(p.barvy[0].id);
+          }
+          return;
+        }
+
         const { data, error: err } = await sb
           .from("produkty")
           .select(
