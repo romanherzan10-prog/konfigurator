@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useMemo } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { Sparkles, Mail, Loader2 } from "lucide-react";
+import { Sparkles, ShoppingCart, Loader2, Check } from "lucide-react";
+
+interface MerchVariant {
+  id: number;
+  nazev: string;
+  cena: number;
+  color: string | null;
+  size: string | null;
+}
 
 interface MerchDetail {
   kod: string;
@@ -12,15 +20,14 @@ interface MerchDetail {
   images: { src: string }[];
   barvy: { nazev: string; hex: string | null }[];
   velikosti: string[];
+  variants: MerchVariant[];
   min_cena: number | null;
   max_cena: number | null;
   mena: string;
 }
 
-function formatCena(v: number | null, mena: string): string {
+function formatCena(v: number | null): string {
   if (v == null) return "—";
-  if (mena === "USD") return `$${v.toFixed(2)}`;
-  if (mena === "EUR") return `${v.toFixed(2)} €`;
   return `${Math.round(v).toLocaleString("cs-CZ")} Kč`;
 }
 
@@ -35,19 +42,58 @@ export default function MerchDetailPage({
   const [notFound, setNotFound] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
 
+  // Výběr varianty
+  const [barva, setBarva] = useState<string | null>(null);
+  const [velikost, setVelikost] = useState<string | null>(null);
+  const [mnozstvi, setMnozstvi] = useState(1);
+  const [added, setAdded] = useState(false);
+
   useEffect(() => {
     const sb = getSupabase();
     sb.from("printify_produkty")
-      .select("kod, nazev, popis, obrazek_url, images, barvy, velikosti, min_cena, max_cena, mena")
+      .select("kod, nazev, popis, obrazek_url, images, barvy, velikosti, variants, min_cena, max_cena, mena")
       .eq("kod", kod)
       .eq("visible", true)
       .single()
       .then(({ data, error }) => {
         if (error || !data) setNotFound(true);
-        else setProdukt(data as MerchDetail);
+        else {
+          const p = data as MerchDetail;
+          setProdukt(p);
+          if (p.barvy?.length) setBarva(p.barvy[0].nazev);
+          if (p.velikosti?.length) setVelikost(p.velikosti[0]);
+        }
         setLoading(false);
       });
   }, [kod]);
+
+  // Vybraná varianta podle barvy + velikosti → cena
+  const selectedVariant = useMemo(() => {
+    if (!produkt?.variants?.length) return null;
+    const vs = produkt.variants;
+    const match = vs.find(
+      (v) =>
+        (barva == null || v.color == null || v.color === barva) &&
+        (velikost == null || v.size == null || v.size === velikost)
+    );
+    return match ?? vs[0];
+  }, [produkt, barva, velikost]);
+
+  const unitCena = selectedVariant?.cena ?? produkt?.min_cena ?? 0;
+
+  function addToCart() {
+    if (!produkt) return;
+    const qp = new URLSearchParams({
+      produkt: produkt.kod,
+      nazev: produkt.nazev,
+      cena: String(Math.round(unitCena)),
+    });
+    if (barva) qp.set("barva", barva);
+    if (velikost) qp.set("velikost", velikost);
+    setAdded(true);
+    // krátká vizuální odezva, pak do košíku (×množství nastaví uživatel tam)
+    window.location.href = `/konfigurator?${qp.toString()}`;
+  }
 
   if (loading) {
     return (
@@ -67,10 +113,6 @@ export default function MerchDetailPage({
   }
 
   const imgs = produkt.images?.length ? produkt.images : produkt.obrazek_url ? [{ src: produkt.obrazek_url }] : [];
-  const cena =
-    produkt.min_cena != null && produkt.max_cena != null && produkt.min_cena !== produkt.max_cena
-      ? `od ${formatCena(produkt.min_cena, produkt.mena)}`
-      : formatCena(produkt.min_cena, produkt.mena);
 
   return (
     <div className="container py-8" style={{ maxWidth: 1100 }}>
@@ -126,65 +168,119 @@ export default function MerchDetailPage({
 
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
             <div className="px-5 py-4" style={{ background: "var(--primary-50)" }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>Cena</p>
-              <span className="text-2xl font-bold" style={{ color: "var(--primary)" }}>{cena}</span>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>Cena za kus</p>
+              <span className="text-2xl font-bold" style={{ color: "var(--primary)" }}>{formatCena(unitCena)}</span>
             </div>
           </div>
 
+          {/* Výběr barvy */}
           {produkt.barvy && produkt.barvy.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-2">Barvy ({produkt.barvy.length})</h3>
+              <h3 className="text-sm font-semibold mb-2">
+                Barva{barva && <span className="font-normal" style={{ color: "var(--muted)" }}> · {barva}</span>}
+              </h3>
               <div className="flex flex-wrap gap-1.5">
-                {produkt.barvy.slice(0, 24).map((b, i) => (
-                  <span
-                    key={i}
-                    title={b.nazev}
-                    className="w-7 h-7 rounded-full"
-                    style={{ backgroundColor: b.hex || "#ccc", border: "1px solid var(--border)" }}
-                  />
-                ))}
-                {produkt.barvy.length > 24 && (
-                  <span className="text-xs self-center ml-1" style={{ color: "var(--muted)" }}>+{produkt.barvy.length - 24}</span>
-                )}
+                {produkt.barvy.map((b, i) => {
+                  const sel = b.nazev === barva;
+                  return (
+                    <button
+                      key={i}
+                      title={b.nazev}
+                      onClick={() => setBarva(b.nazev)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                      style={{
+                        backgroundColor: b.hex || "#ccc",
+                        border: `2px solid ${sel ? "var(--primary)" : "var(--border)"}`,
+                        boxShadow: sel ? "0 0 0 2px var(--primary-50)" : "none",
+                      }}
+                    >
+                      {sel && <Check className="w-4 h-4" style={{ color: "#fff", mixBlendMode: "difference" }} />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
+          {/* Výběr velikosti */}
           {produkt.velikosti && produkt.velikosti.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-2">Velikosti</h3>
+              <h3 className="text-sm font-semibold mb-2">Velikost</h3>
               <div className="flex flex-wrap gap-2">
-                {produkt.velikosti.map((v, i) => (
-                  <span
-                    key={i}
-                    className="px-3 py-1.5 rounded-lg text-sm"
-                    style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--foreground)" }}
-                  >
-                    {v}
-                  </span>
-                ))}
+                {produkt.velikosti.map((v, i) => {
+                  const sel = v === velikost;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setVelikost(v)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                      style={{
+                        background: sel ? "var(--primary)" : "var(--surface)",
+                        color: sel ? "#fff" : "var(--foreground)",
+                        border: `1.5px solid ${sel ? "var(--primary)" : "var(--border)"}`,
+                      }}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
+
+          {/* Množství */}
+          <div>
+            <h3 className="text-sm font-semibold mb-2">Množství</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setMnozstvi((q) => Math.max(1, q - 1))}
+                className="w-9 h-9 rounded-lg border text-lg"
+                style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={mnozstvi}
+                onChange={(e) => setMnozstvi(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+                className="w-16 text-center rounded-lg border px-2 py-1.5 text-sm outline-none"
+                style={{ borderColor: "var(--border)" }}
+              />
+              <button
+                onClick={() => setMnozstvi((q) => Math.min(500, q + 1))}
+                className="w-9 h-9 rounded-lg border text-lg"
+                style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+              >
+                +
+              </button>
+              <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>
+                = <strong style={{ color: "var(--primary)" }}>{formatCena(unitCena * mnozstvi)}</strong>
+              </span>
+            </div>
+          </div>
 
           {produkt.popis && (
             <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>{produkt.popis}</p>
           )}
 
           <div className="flex flex-wrap gap-3 pt-1">
-            <a
-              href={`/navrhnout/${encodeURIComponent(produkt.kod)}`}
-              className="inline-flex items-center gap-2 px-6 py-3 font-semibold rounded-lg text-white"
+            <button
+              onClick={addToCart}
+              disabled={added}
+              className="inline-flex items-center gap-2 px-6 py-3 font-semibold rounded-lg text-white disabled:opacity-70"
               style={{ background: "var(--primary)" }}
             >
-              <Sparkles className="w-4 h-4" /> Navrhnout potisk
-            </a>
+              {added ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+              {added ? "Přidávám…" : "Přidat do košíku"}
+            </button>
             <a
-              href={`mailto:info@loooku.cz?subject=${encodeURIComponent("Zájem o " + produkt.nazev)}`}
+              href={`/navrhnout/${encodeURIComponent(produkt.kod)}`}
               className="inline-flex items-center gap-2 px-6 py-3 font-medium rounded-lg"
               style={{ background: "var(--surface)", color: "var(--foreground)", border: "1.5px solid var(--border)" }}
             >
-              <Mail className="w-4 h-4" /> Mám zájem
+              <Sparkles className="w-4 h-4" /> Navrhnout potisk
             </a>
           </div>
           <p className="text-xs" style={{ color: "var(--muted-light)" }}>

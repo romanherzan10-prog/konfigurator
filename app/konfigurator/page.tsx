@@ -23,7 +23,10 @@ import {
   saveCart,
   clearCart,
   createCartItemFromCatalog,
+  createMerchCartItem,
   createEmptyCartItem,
+  isMerch,
+  merchLineTotal,
 } from "@/lib/cart";
 
 function defaultDeadline(): string {
@@ -50,6 +53,105 @@ const SERVICE_LABELS: Record<ServiceType, { label: string; short: string }> = {
   embroidery: { label: "Výšivka", short: "Výšivka" },
   clean: { label: "Čistý textil", short: "Čistý" },
 };
+
+/* ─── Karta merch produktu (Printify, fixní cena) ───────────────── */
+
+function MerchCartItemCard({
+  item,
+  onChange,
+  onRemove,
+  itemCount,
+}: {
+  item: CartItem;
+  onChange: (updated: CartItem) => void;
+  onRemove: () => void;
+  itemCount: number;
+}) {
+  const lineTotal = merchLineTotal(item);
+  function setQty(q: number) {
+    onChange({ ...item, quantity: Math.max(1, Math.min(500, q || 1)) });
+  }
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4">
+        {item.nahledUrl ? (
+          <img
+            src={item.nahledUrl}
+            alt="Náhled návrhu"
+            className="w-14 h-14 rounded-lg object-contain shrink-0"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+          />
+        ) : (
+          <span className="text-2xl">✨</span>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-sm truncate">{item.catalogNazev}</span>
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+              style={{ background: "var(--primary-50)", color: "var(--primary)" }}
+            >
+              Merch
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {item.catalogBarva && `${item.catalogBarva}`}
+            {item.merchVelikost && ` · vel. ${item.merchVelikost}`}
+            {item.nahledUrl && " · s vlastním potiskem"}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {formatPrice(item.merchUnitCena ?? 0)} / ks
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setQty(item.quantity - 1)}
+            className="w-7 h-7 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
+          >
+            −
+          </button>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={item.quantity}
+            onChange={(e) => setQty(Number(e.target.value))}
+            className="w-12 text-center rounded-lg border border-gray-300 px-1 py-1 text-sm outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            onClick={() => setQty(item.quantity + 1)}
+            className="w-7 h-7 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
+          >
+            +
+          </button>
+        </div>
+        <span className="font-semibold text-primary whitespace-nowrap w-24 text-right">
+          {formatPrice(lineTotal)}
+        </span>
+      </div>
+      {(itemCount > 1 || item.nahledUrl) && (
+        <div className="border-t border-gray-100 px-5 py-2 flex items-center justify-between">
+          {item.nahledUrl ? (
+            <span className="text-xs text-gray-400">Potisk doceníme v nabídce</span>
+          ) : (
+            <span />
+          )}
+          {itemCount > 1 && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer"
+            >
+              Odebrat
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ─── Komponenta jednoho produktu v košíku ──────────────────────── */
 
@@ -397,16 +499,27 @@ function HomeInner() {
       const navrh = searchParams.get("navrh"); // R2 URL náhledu návrhu
       const serviceType =
         typParam === "vysivka" ? "embroidery" : typParam === "potisk" ? "print" : undefined;
+      const barva = searchParams.get("barva") ? decodeURIComponent(searchParams.get("barva")!) : null;
+      const nahledUrl = navrh ? decodeURIComponent(navrh) : null;
 
-      const newItem = createCartItemFromCatalog({
-        kod: produktKod,
-        nazev: decodeURIComponent(nazev),
-        cena: Number(cena),
-        barva: searchParams.get("barva") ? decodeURIComponent(searchParams.get("barva")!) : null,
-        kategorie: searchParams.get("kategorie") ? decodeURIComponent(searchParams.get("kategorie")!) : null,
-        serviceType,
-        nahledUrl: navrh ? decodeURIComponent(navrh) : null,
-      });
+      const newItem = produktKod.startsWith("PF-")
+        ? createMerchCartItem({
+            kod: produktKod,
+            nazev: decodeURIComponent(nazev),
+            cena: Number(cena),
+            barva,
+            velikost: searchParams.get("velikost") ? decodeURIComponent(searchParams.get("velikost")!) : null,
+            nahledUrl,
+          })
+        : createCartItemFromCatalog({
+            kod: produktKod,
+            nazev: decodeURIComponent(nazev),
+            cena: Number(cena),
+            barva,
+            kategorie: searchParams.get("kategorie") ? decodeURIComponent(searchParams.get("kategorie")!) : null,
+            serviceType,
+            nahledUrl,
+          });
 
       setItems((prev) => {
         const next = [...prev, newItem];
@@ -438,6 +551,13 @@ function HomeInner() {
     let totalItems = 0;
 
     for (const item of items) {
+      if (isMerch(item)) {
+        const line = merchLineTotal(item); // vč. DPH
+        totalWithDph += line;
+        totalWithoutDph += Math.round(line / 1.21);
+        totalItems += item.quantity;
+        continue;
+      }
       const eff = item.catalogCena
         ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
         : activeConfig;
@@ -495,6 +615,22 @@ function HomeInner() {
 
     // Sestavení detailu produktů pro DB
     const produktyDetail = items.map((item) => {
+      if (isMerch(item)) {
+        const unit = Math.round(item.merchUnitCena ?? item.catalogCena ?? 0);
+        return {
+          katalog_kod: item.catalogKod,
+          katalog_nazev: item.catalogNazev,
+          katalog_barva: item.catalogBarva,
+          typ_produktu: "merch",
+          velikost: item.merchVelikost ?? null,
+          typ_zpracovani: item.nahledUrl ? "potisk" : "hotovy",
+          mnozstvi: item.quantity,
+          logo_umisteni: null,
+          nahled_url: item.nahledUrl ?? null,
+          cena_ks_s_dph: unit,
+          cena_celkem_s_dph: merchLineTotal(item),
+        };
+      }
       const eff = item.catalogCena
         ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
         : activeConfig;
@@ -629,19 +765,29 @@ function HomeInner() {
             </p>
 
             <div className="space-y-3">
-              {items.map((item, idx) => (
-                <CartItemCard
-                  key={item.id}
-                  item={item}
-                  index={idx}
-                  config={activeConfig}
-                  expanded={expandedId === item.id}
-                  onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  onChange={(updated) => updateItem(item.id, updated)}
-                  onRemove={() => removeItem(item.id)}
-                  itemCount={items.length}
-                />
-              ))}
+              {items.map((item, idx) =>
+                isMerch(item) ? (
+                  <MerchCartItemCard
+                    key={item.id}
+                    item={item}
+                    onChange={(updated) => updateItem(item.id, updated)}
+                    onRemove={() => removeItem(item.id)}
+                    itemCount={items.length}
+                  />
+                ) : (
+                  <CartItemCard
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    config={activeConfig}
+                    expanded={expandedId === item.id}
+                    onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                    onChange={(updated) => updateItem(item.id, updated)}
+                    onRemove={() => removeItem(item.id)}
+                    itemCount={items.length}
+                  />
+                )
+              )}
             </div>
 
             {/* Přidat produkt */}
@@ -788,16 +934,17 @@ function HomeInner() {
               <>
                 <div className="text-sm space-y-2">
                   {items.map((item) => {
-                    const eff = item.catalogCena
-                      ? ({ ...activeConfig, [`cena_${item.productType}`]: item.catalogCena } as KonfiguratorNastaveni)
-                      : activeConfig;
-                    const est = calculateEstimate(
-                      item.productType,
-                      item.serviceType,
-                      item.quantity,
-                      item.serviceType === "clean" ? [] : item.placements,
-                      eff
-                    );
+                    const lineTotal = isMerch(item)
+                      ? merchLineTotal(item)
+                      : calculateEstimate(
+                          item.productType,
+                          item.serviceType,
+                          item.quantity,
+                          item.serviceType === "clean" ? [] : item.placements,
+                          (item.catalogCena
+                            ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
+                            : activeConfig) as KonfiguratorNastaveni
+                        ).totalPriceWithDph;
                     return (
                       <div key={item.id} className="flex justify-between text-gray-500">
                         <span className="truncate mr-2">
@@ -809,7 +956,7 @@ function HomeInner() {
                           <span className="text-gray-400"> ×{item.quantity}</span>
                         </span>
                         <span className="font-medium text-gray-700 whitespace-nowrap">
-                          {formatPrice(est.totalPriceWithDph)}
+                          {formatPrice(lineTotal)}
                         </span>
                       </div>
                     );

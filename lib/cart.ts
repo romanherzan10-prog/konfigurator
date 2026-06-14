@@ -1,7 +1,12 @@
 import type { ProductType, ServiceType, LogoPlacement } from "./pricing";
 
+// "textil" = konfigurovatelný textil s cenotvorbou (calculateEstimate);
+// "merch" = hotový produkt z Printify s fixní cenou za variantu.
+export type CartKind = "textil" | "merch";
+
 export interface CartItem {
   id: string;
+  kind?: CartKind; // undefined => textil (zpětná kompatibilita se starým košíkem)
   // Z katalogu (null pro generické produkty)
   catalogKod: string | null;
   catalogNazev: string | null;
@@ -15,6 +20,19 @@ export interface CartItem {
   placements: LogoPlacement[];
   // Náhled návrhu z customizeru (R2 URL) — pokud zákazník navrhl potisk
   nahledUrl?: string | null;
+  // Merch (Printify) — fixní cena za kus, varianta barva/velikost
+  merchUnitCena?: number | null; // CZK vč. DPH
+  merchVelikost?: string | null;
+}
+
+// Je položka merch? (kind, nebo PF- kód ze starých košíků / customizeru)
+export function isMerch(item: CartItem): boolean {
+  return item.kind === "merch" || !!item.catalogKod?.startsWith("PF-");
+}
+
+// Cena řádku merch (vč. DPH) = fixní cena × množství.
+export function merchLineTotal(item: CartItem): number {
+  return Math.round((item.merchUnitCena ?? item.catalogCena ?? 0) * item.quantity);
 }
 
 const STORAGE_KEY = "loooku_cart";
@@ -81,6 +99,33 @@ export function createCartItemFromCatalog(params: {
     quantity: 25,
     placements: [{ location: "leve-prso", size: "male" as const }],
     nahledUrl: params.nahledUrl ?? null,
+  };
+}
+
+export function createMerchCartItem(params: {
+  kod: string;
+  nazev: string;
+  cena: number; // fixní cena za kus (CZK vč. DPH)
+  barva?: string | null;
+  velikost?: string | null;
+  nahledUrl?: string | null;
+}): CartItem {
+  const hasPotisk = !!params.nahledUrl;
+  return {
+    id: generateId(),
+    kind: "merch",
+    catalogKod: params.kod,
+    catalogNazev: params.nazev,
+    catalogCena: params.cena,
+    catalogBarva: params.barva ?? null,
+    catalogKategorie: "Merch",
+    productType: "tricko", // nepoužije se pro cenu merch
+    serviceType: hasPotisk ? "print" : "clean",
+    quantity: 1,
+    placements: [],
+    nahledUrl: params.nahledUrl ?? null,
+    merchUnitCena: params.cena,
+    merchVelikost: params.velikost ?? null,
   };
 }
 
