@@ -11,6 +11,18 @@ import {
   Sparkles,
 } from "lucide-react";
 
+interface PoptavkaPolozka {
+  poradi: number;
+  nazev: string;
+  kategorie: string | null;
+  barva: string | null;
+  velikost: string | null;
+  mnozstvi: number | null;
+  typ_zpracovani: string | null;
+  cena_celkem_s_dph: number | null;
+  nahled_url: string | null;
+}
+
 interface MojePoptavka {
   id: string;
   created_at: string;
@@ -20,6 +32,12 @@ interface MojePoptavka {
   stav: string;
   odhadovana_cena_celkem: number | null;
   logo_soubor_url: string | null;
+  dalsi_info: string | null;
+  polozky: PoptavkaPolozka[];
+}
+
+function zpracLabel(t: string | null): string {
+  return t === "embroidery" ? "výšivka" : t === "clean" || t === "hotovy" ? "bez potisku" : "potisk";
 }
 
 const STAV_LABELS: Record<string, string> = {
@@ -211,42 +229,100 @@ export default function UcetPage() {
         <div className="space-y-3">
           {poptavky.map((p) => {
             const c = STAV_COLOR[p.stav] ?? STAV_COLOR.nova;
+            const polozky = p.polozky ?? [];
             return (
               <div
                 key={p.id}
-                className="rounded-xl p-4 flex items-center gap-4"
+                className="rounded-xl p-4"
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}
               >
-                {p.logo_soubor_url ? (
-                  <img
-                    src={p.logo_soubor_url}
-                    alt="Náhled"
-                    className="w-14 h-14 rounded-lg object-contain shrink-0"
-                    style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
-                  />
-                ) : (
-                  <div
-                    className="w-14 h-14 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: "var(--surface-2)", color: "var(--muted-light)" }}
+                {/* Hlavička poptávky */}
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold">Poptávka z {formatDate(p.created_at)}</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>
+                      {p.mnozstvi} ks celkem
+                      {p.odhadovana_cena_celkem
+                        ? ` · odhad ${Math.round(p.odhadovana_cena_celkem).toLocaleString("cs-CZ")} Kč vč. DPH`
+                        : ""}
+                    </p>
+                  </div>
+                  <span
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                    style={{ background: c.bg, color: c.fg }}
                   >
-                    <Package className="w-6 h-6" />
+                    {STAV_LABELS[p.stav] ?? p.stav}
+                  </span>
+                </div>
+
+                {/* Položky */}
+                {polozky.length > 0 ? (
+                  <div className="space-y-2">
+                    {polozky.map((it, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 rounded-lg p-2"
+                        style={{ background: "var(--surface-2)" }}
+                      >
+                        {it.nahled_url ? (
+                          <img
+                            src={it.nahled_url}
+                            alt="Náhled návrhu"
+                            className="w-12 h-12 rounded-md object-contain shrink-0"
+                            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+                          />
+                        ) : (
+                          <div
+                            className="w-12 h-12 rounded-md flex items-center justify-center shrink-0"
+                            style={{ background: "var(--surface)", color: "var(--muted-light)" }}
+                          >
+                            <Package className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{it.nazev}</p>
+                          <p className="text-xs" style={{ color: "var(--muted)" }}>
+                            {(it.mnozstvi ?? 1)} ks · {zpracLabel(it.typ_zpracovani)}
+                            {it.barva ? ` · ${it.barva}` : ""}
+                            {it.velikost ? ` · vel. ${it.velikost}` : ""}
+                          </p>
+                        </div>
+                        {it.cena_celkem_s_dph != null && (
+                          <span className="text-sm font-semibold shrink-0" style={{ color: "var(--primary)" }}>
+                            {Math.round(it.cena_celkem_s_dph).toLocaleString("cs-CZ")} Kč
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    {p.logo_soubor_url ? (
+                      <img
+                        src={p.logo_soubor_url}
+                        alt="Náhled"
+                        className="w-12 h-12 rounded-md object-contain shrink-0"
+                        style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+                      />
+                    ) : (
+                      <div
+                        className="w-12 h-12 rounded-md flex items-center justify-center shrink-0"
+                        style={{ background: "var(--surface-2)", color: "var(--muted-light)" }}
+                      >
+                        <Package className="w-5 h-5" />
+                      </div>
+                    )}
+                    <p className="text-sm" style={{ color: "var(--muted)" }}>
+                      {p.mnozstvi} ks · {zpracLabel(p.typ_zpracovani)}
+                    </p>
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">
-                    {p.mnozstvi} ks · {p.typ_zpracovani === "embroidery" ? "výšivka" : p.typ_zpracovani === "clean" ? "bez potisku" : "potisk"}
+
+                {p.dalsi_info && (
+                  <p className="text-xs mt-3 pt-3" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                    „{p.dalsi_info}"
                   </p>
-                  <p className="text-xs" style={{ color: "var(--muted)" }}>
-                    {formatDate(p.created_at)}
-                    {p.odhadovana_cena_celkem ? ` · odhad ${Math.round(p.odhadovana_cena_celkem).toLocaleString("cs-CZ")} Kč` : ""}
-                  </p>
-                </div>
-                <span
-                  className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
-                  style={{ background: c.bg, color: c.fg }}
-                >
-                  {STAV_LABELS[p.stav] ?? p.stav}
-                </span>
+                )}
               </div>
             );
           })}
