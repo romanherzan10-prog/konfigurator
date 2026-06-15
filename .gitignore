@@ -49,3 +49,5 @@ next-env.d.ts
 # Claude Code workspace
 .claude/
 scripts/.claude-flow/
+fil _*.log a build logy
+_*.log
