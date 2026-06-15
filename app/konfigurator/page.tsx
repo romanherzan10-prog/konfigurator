@@ -449,6 +449,8 @@ function HomeInner() {
   // Shared form state
   const [neededBy, setNeededBy] = useState(defaultDeadline);
   const [fileName, setFileName] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [placementNotes, setPlacementNotes] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -596,6 +598,35 @@ function HomeInner() {
     setExpandedId(newItem.id);
   }
 
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setLogoUrl(null);
+    setLogoUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/upload-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nazev: file.name, typ: file.type, data_base64: dataUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nahrání selhalo.");
+      setLogoUrl(json.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nahrání loga selhalo.");
+      setFileName("");
+    } finally {
+      setLogoUploading(false);
+    }
+  }
+
   async function handleSubmit() {
     setError("");
     if (items.length === 0) {
@@ -658,7 +689,7 @@ function HomeInner() {
     // Náhledy návrhů z customizeru (R2) — první jako hlavní, všechny jako odkazy
     const nahledy = items.map((i) => i.nahledUrl).filter(Boolean) as string[];
 
-    const { error: dbError } = await getSupabase().from("poptavky").insert({
+    const { data: novaPoptavka, error: dbError } = await getSupabase().from("poptavky").insert({
       jmeno: firstName.trim(),
       prijmeni: lastName.trim(),
       email: email.trim(),
@@ -669,7 +700,8 @@ function HomeInner() {
       termin: neededBy || null,
       logo_umisteni: items[0].serviceType === "clean" ? null : items[0].placements,
       poznamka_umisteni: placementNotes.trim() || null,
-      logo_soubor_url: nahledy[0] ?? null,
+      logo_soubor_url: logoUrl ?? nahledy[0] ?? null,
+      logo_soubor_nazev: logoUrl ? fileName : nahledy[0] ? "Náhled návrhu" : null,
       dalsi_info: [
         additionalInfo.trim(),
         nahledy.length > 0 ? `\n--- Náhledy návrhů (${nahledy.length}) ---\n${nahledy.join("\n")}` : "",
@@ -685,13 +717,41 @@ function HomeInner() {
       mnozstevni_sleva: 0,
       priplatek_termin: 0,
       stav: "nova",
-    });
-    setSubmitting(false);
+    }).select("id").single();
 
-    if (dbError) {
-      setError(`Chyba při odesílání: ${dbError.message}`);
+    if (dbError || !novaPoptavka) {
+      setSubmitting(false);
+      setError(`Chyba při odesílání: ${dbError?.message ?? "neznámá chyba"}`);
       return;
     }
+
+    // Strukturované řádky poptávky (co za kolik) — zdroj pro převod na zakázku
+    const polozkyRows = items.map((item, idx) => {
+      const d = produktyDetail[idx];
+      return {
+        poptavka_id: novaPoptavka.id,
+        poradi: idx,
+        kind: isMerch(item) ? "merch" : "textil",
+        katalogove_cislo: item.catalogKod,
+        nazev: item.catalogNazev || getProductTypes(activeConfig)[item.productType].label,
+        kategorie: item.catalogKategorie,
+        typ_zpracovani: d.typ_zpracovani,
+        barva: item.catalogBarva,
+        velikost: item.merchVelikost ?? null,
+        mnozstvi: item.quantity,
+        cena_ks_s_dph: d.cena_ks_s_dph,
+        cena_celkem_s_dph: d.cena_celkem_s_dph,
+        logo_umisteni: isMerch(item) || item.serviceType === "clean" ? null : item.placements,
+        nahled_url: item.nahledUrl ?? null,
+      };
+    });
+    const { error: polozkyError } = await getSupabase().from("poptavka_polozky").insert(polozkyRows);
+    setSubmitting(false);
+    if (polozkyError) {
+      // poptávka už vznikla — položky se nepovedly; nehážeme hard error, jen logujeme
+      console.error("[poptavka_polozky]", polozkyError.message);
+    }
+
     clearCart();
     setSubmitted(true);
   }
@@ -832,17 +892,20 @@ function HomeInner() {
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm hover:border-gray-400 transition-colors cursor-pointer"
+                    disabled={logoUploading}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm hover:border-gray-400 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    Vybrat soubor
+                    {logoUploading ? "Nahrávám…" : "Vybrat soubor"}
                   </button>
-                  <span className="text-sm text-gray-500 truncate">{fileName || "Žádný soubor nevybrán"}</span>
+                  <span className="text-sm text-gray-500 truncate">
+                    {logoUrl ? `✓ ${fileName}` : fileName || "Žádný soubor nevybrán"}
+                  </span>
                   <input
                     ref={fileRef}
                     type="file"
                     accept="image/*,.pdf,.ai,.eps,.svg"
                     className="hidden"
-                    onChange={(e) => setFileName(e.target.files?.[0]?.name || "")}
+                    onChange={handleLogoFile}
                   />
                 </div>
               </div>
