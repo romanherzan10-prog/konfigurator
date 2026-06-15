@@ -689,7 +689,11 @@ function HomeInner() {
     // Náhledy návrhů z customizeru (R2) — první jako hlavní, všechny jako odkazy
     const nahledy = items.map((i) => i.nahledUrl).filter(Boolean) as string[];
 
-    const { data: novaPoptavka, error: dbError } = await getSupabase().from("poptavky").insert({
+    // Anon má na poptavky jen INSERT (ne SELECT) → nepoužívat .select() (returning
+    // by RLS zablokoval). Vygenerujeme id na klientovi a předáme ho i položkám.
+    const poptavkaId = crypto.randomUUID();
+    const { error: dbError } = await getSupabase().from("poptavky").insert({
+      id: poptavkaId,
       jmeno: firstName.trim(),
       prijmeni: lastName.trim(),
       email: email.trim(),
@@ -717,11 +721,11 @@ function HomeInner() {
       mnozstevni_sleva: 0,
       priplatek_termin: 0,
       stav: "nova",
-    }).select("id").single();
+    });
 
-    if (dbError || !novaPoptavka) {
+    if (dbError) {
       setSubmitting(false);
-      setError(`Chyba při odesílání: ${dbError?.message ?? "neznámá chyba"}`);
+      setError(`Chyba při odesílání: ${dbError.message}`);
       return;
     }
 
@@ -729,7 +733,7 @@ function HomeInner() {
     const polozkyRows = items.map((item, idx) => {
       const d = produktyDetail[idx];
       return {
-        poptavka_id: novaPoptavka.id,
+        poptavka_id: poptavkaId,
         poradi: idx,
         kind: isMerch(item) ? "merch" : "textil",
         katalogove_cislo: item.catalogKod,
