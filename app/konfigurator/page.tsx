@@ -706,13 +706,8 @@ function HomeInner() {
       poznamka_umisteni: placementNotes.trim() || null,
       logo_soubor_url: logoUrl ?? nahledy[0] ?? null,
       logo_soubor_nazev: logoUrl ? fileName : nahledy[0] ? "Náhled návrhu" : null,
-      dalsi_info: [
-        additionalInfo.trim(),
-        nahledy.length > 0 ? `\n--- Náhledy návrhů (${nahledy.length}) ---\n${nahledy.join("\n")}` : "",
-        items.length > 1 ? `\n--- ${items.length} produktů v poptávce ---\n${JSON.stringify(produktyDetail, null, 2)}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n") || null,
+      // dalsi_info = jen čistá poznámka zákazníka; položky + náhledy jsou strukturované v poptavka_polozky
+      dalsi_info: additionalInfo.trim() || null,
       odhadovana_cena_ks: Math.round(totals.totalWithDph / totals.totalItems),
       odhadovana_cena_celkem: totals.totalWithDph,
       zakladni_cena_produkt: 0,
