@@ -186,11 +186,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Sparkles className="w-4 h-4" />
                 Poradit s výběrem
               </button>
-              <a href="tel:+420123456789" className="flex items-center gap-2 px-3 py-2 text-sm" style={{ color: "var(--muted)" }}>
-                <Phone className="w-4 h-4" /> +420 123 456 789
+              <a href="tel:+420739165191" className="flex items-center gap-2 px-3 py-2 text-sm" style={{ color: "var(--muted)" }}>
+                <Phone className="w-4 h-4" /> +420 739 165 191
               </a>
-              <a href="mailto:info@loooku.cz" className="flex items-center gap-2 px-3 py-2 text-sm" style={{ color: "var(--muted)" }}>
-                <Mail className="w-4 h-4" /> info@loooku.cz
+              <a href="mailto:loookucz@gmail.com" className="flex items-center gap-2 px-3 py-2 text-sm" style={{ color: "var(--muted)" }}>
+                <Mail className="w-4 h-4" /> loookucz@gmail.com
               </a>
             </div>
           </div>
