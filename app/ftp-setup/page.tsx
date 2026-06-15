@@ -68,7 +68,7 @@ export default function FtpSetupPage() {
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
                 placeholder="ftp.cottonclassics.com"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-[var(--primary)]/20 outline-none"
               />
             </div>
 
@@ -81,7 +81,7 @@ export default function FtpSetupPage() {
                 placeholder="username"
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-[var(--primary)]/20 outline-none"
               />
             </div>
 
@@ -94,7 +94,7 @@ export default function FtpSetupPage() {
                 placeholder="password"
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-[var(--primary)]/20 outline-none"
               />
             </div>
 
@@ -106,7 +106,7 @@ export default function FtpSetupPage() {
                 onChange={(e) => setPath(e.target.value)}
                 placeholder="/"
                 autoCapitalize="none"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-[var(--primary)]/20 outline-none"
               />
             </div>
 
@@ -117,7 +117,7 @@ export default function FtpSetupPage() {
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
                 placeholder="Cokoliv důležitého k importu..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-y"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-[var(--primary)]/20 outline-none resize-y"
               />
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function FtpSetupPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="mt-6 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50 transition-colors"
           >
             {submitting ? "Ukládám..." : "Uložit přístupy"}
           </button>
