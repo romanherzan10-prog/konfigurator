@@ -243,7 +243,10 @@ function CartItemCard({
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm truncate">{productLabel}</span>
             {item.catalogKod && (
-              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+              <span
+                className="text-xs px-1.5 py-0.5 rounded font-mono"
+                style={{ background: "var(--primary-50)", color: "var(--primary)" }}
+              >
                 {item.catalogKod}
               </span>
             )}
@@ -275,7 +278,7 @@ function CartItemCard({
                     onClick={() => update({ productType: key })}
                     className={`flex flex-col items-center gap-0.5 rounded-lg border-2 p-2 text-center transition-all cursor-pointer text-xs ${
                       item.productType === key
-                        ? "border-primary bg-blue-50"
+                        ? "border-primary bg-[var(--primary-50)]"
                         : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
@@ -303,7 +306,7 @@ function CartItemCard({
                   }}
                   className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all cursor-pointer ${
                     item.serviceType === key
-                      ? "border-primary bg-blue-50"
+                      ? "border-primary bg-[var(--primary-50)]"
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
@@ -331,7 +334,7 @@ function CartItemCard({
                 max={500}
                 value={item.quantity}
                 onChange={(e) => update({ quantity: Number(e.target.value) })}
-                className="flex-1 accent-[#2563eb]"
+                className="flex-1 accent-[var(--primary)]"
               />
             </div>
           </div>
@@ -364,7 +367,7 @@ function CartItemCard({
                           onClick={() => updatePlacement(idx, "size", ls.key)}
                           className={`rounded-lg border-2 px-2 py-1 text-xs transition-all cursor-pointer ${
                             p.size === ls.key
-                              ? "border-primary bg-blue-50"
+                              ? "border-primary bg-[var(--primary-50)]"
                               : "border-gray-200 hover:border-gray-300"
                           }`}
                         >
@@ -860,7 +863,7 @@ function HomeInner() {
             <div className="flex flex-wrap gap-3 mt-4">
               <a
                 href="/katalog"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary text-sm font-medium hover:border-primary hover:bg-blue-50 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary text-sm font-medium hover:border-primary hover:bg-[var(--primary-50)] transition-all"
               >
                 📦 Přidat z katalogu
               </a>
@@ -1039,7 +1042,7 @@ function HomeInner() {
                   <span className="font-medium text-gray-700">{totals.totalItems} ks</span>
                 </div>
 
-                <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 -mx-1">
+                <div className="rounded-xl p-4 -mx-1" style={{ background: "var(--primary-50)", border: "1px solid var(--primary-100)" }}>
                   <div className="flex justify-between items-baseline">
                     <span className="text-sm font-medium text-gray-700">Celkem vč. DPH</span>
                     <span className="text-2xl font-bold text-primary">{formatPrice(totals.totalWithDph)}</span>

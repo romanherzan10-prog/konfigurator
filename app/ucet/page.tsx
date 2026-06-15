@@ -52,7 +52,7 @@ const STAV_LABELS: Record<string, string> = {
 const STAV_COLOR: Record<string, { bg: string; fg: string }> = {
   nova: { bg: "var(--primary-50)", fg: "var(--primary)" },
   zpracovava_se: { bg: "#FFFBEB", fg: "#B45309" },
-  nabidka_odeslana: { bg: "#EFF6FF", fg: "#1D4ED8" },
+  nabidka_odeslana: { bg: "var(--primary-50)", fg: "var(--primary-hover)" },
   schvalena: { bg: "#ECFDF5", fg: "#047857" },
   zamitnuta: { bg: "#FEF2F2", fg: "#DC2626" },
   zrusena: { bg: "var(--surface-2)", fg: "var(--muted)" },

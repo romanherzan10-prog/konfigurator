@@ -52,22 +52,22 @@ function formatKc(val: number | null | undefined): string {
 function DetailSkeleton() {
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
-      <div className="h-4 bg-gray-100 rounded w-48 mb-8" />
+      <div className="h-4 rounded w-48 mb-8" style={{ background: "var(--surface-2)" }} />
       <div className="flex flex-col lg:flex-row gap-10">
         <div className="lg:w-1/2">
-          <div className="aspect-square bg-gray-100 rounded-xl" />
+          <div className="aspect-square rounded-xl" style={{ background: "var(--surface-2)" }} />
         </div>
         <div className="lg:w-1/2 space-y-4">
-          <div className="h-8 bg-gray-100 rounded w-3/4" />
-          <div className="h-4 bg-gray-100 rounded w-1/3" />
-          <div className="h-4 bg-gray-100 rounded w-1/2" />
-          <div className="h-20 bg-gray-100 rounded" />
+          <div className="h-8 rounded w-3/4" style={{ background: "var(--surface-2)" }} />
+          <div className="h-4 rounded w-1/3" style={{ background: "var(--surface-2)" }} />
+          <div className="h-4 rounded w-1/2" style={{ background: "var(--surface-2)" }} />
+          <div className="h-20 rounded" style={{ background: "var(--surface-2)" }} />
           <div className="flex gap-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="w-8 h-8 rounded-full bg-gray-100" />
+              <div key={i} className="w-8 h-8 rounded-full" style={{ background: "var(--surface-2)" }} />
             ))}
           </div>
-          <div className="h-40 bg-gray-100 rounded" />
+          <div className="h-40 rounded" style={{ background: "var(--surface-2)" }} />
         </div>
       </div>
     </div>
@@ -158,7 +158,7 @@ export default function ProduktDetailPage({
       <div className="mx-auto max-w-2xl px-4 py-24 text-center">
         <div className="text-5xl mb-4">🔍</div>
         <h1 className="text-2xl font-bold mb-2">Produkt nenalezen</h1>
-        <p className="text-gray-500 mb-6">
+        <p className="mb-6" style={{ color: "var(--muted)" }}>
           Produkt s kódem &quot;{kod}&quot; nebyl nalezen v katalogu.
         </p>
         <a
@@ -182,12 +182,12 @@ export default function ProduktDetailPage({
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
       {/* Breadcrumb */}
-      <nav className="text-sm text-gray-500 mb-6">
+      <nav className="text-sm mb-6" style={{ color: "var(--muted)" }}>
         <a href="/katalog" className="hover:text-primary transition-colors">
           Katalog
         </a>
         <span className="mx-2">/</span>
-        <span className="text-gray-900">{produkt.nazev}</span>
+        <span style={{ color: "var(--foreground)" }}>{produkt.nazev}</span>
       </nav>
 
       <div className="flex flex-col lg:flex-row gap-10 lg:items-start">
@@ -243,18 +243,18 @@ export default function ProduktDetailPage({
         <div className="lg:w-1/2 space-y-5">
           <div>
             <h1 className="text-2xl font-bold mb-1">{produkt.nazev}</h1>
-            <div className="flex items-center gap-3 text-sm text-gray-500">
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--muted)" }}>
               {produkt.znacka && <span>{produkt.znacka.nazev}</span>}
-              <span className="text-gray-300">·</span>
-              <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{produkt.kod}</span>
+              <span style={{ color: "var(--muted-light)" }}>·</span>
+              <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: "var(--surface-2)" }}>{produkt.kod}</span>
             </div>
           </div>
 
           {/* Doporučená cena */}
           {hasCeny && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-5 py-4 bg-primary/5">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+              <div className="px-5 py-4" style={{ background: "var(--primary-50)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
                   Doporučená cena
                 </p>
                 <div className="flex items-baseline gap-1.5">
@@ -263,16 +263,16 @@ export default function ProduktDetailPage({
                       ? formatKc(cenaOd)
                       : `od ${formatKc(cenaOd)}`}
                   </span>
-                  <span className="text-sm text-gray-400">bez DPH / ks</span>
+                  <span className="text-sm" style={{ color: "var(--muted-light)" }}>bez DPH / ks</span>
                 </div>
               </div>
-              <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 space-y-1">
-                <p className="text-xs text-gray-500">
+              <div className="px-5 py-2.5 space-y-1" style={{ background: "var(--surface-2)", borderTop: "1px solid var(--border)" }}>
+                <p className="text-xs" style={{ color: "var(--muted)" }}>
                   {cenaOd === cenaDo || cenaDo == null
                     ? `${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`
                     : `od ${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`}
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs" style={{ color: "var(--muted-light)" }}>
                   Při větším množství nabízíme slevu — kontaktujte nás pro individuální nabídku.
                 </p>
               </div>
@@ -280,35 +280,35 @@ export default function ProduktDetailPage({
           )}
 
           {/* Parametry */}
-          <div className="text-sm text-gray-500 space-y-1">
+          <div className="text-sm space-y-1" style={{ color: "var(--muted)" }}>
             {produkt.material && (
               <p>
-                <span className="font-medium text-gray-700">Materiál:</span>{" "}
+                <span className="font-medium" style={{ color: "var(--foreground)" }}>Materiál:</span>{" "}
                 {produkt.material}
               </p>
             )}
             {produkt.gramaz && (
               <p>
-                <span className="font-medium text-gray-700">Gramáž:</span>{" "}
+                <span className="font-medium" style={{ color: "var(--foreground)" }}>Gramáž:</span>{" "}
                 {produkt.gramaz} g/m²
               </p>
             )}
             {produkt.hmotnost_g && (
               <p>
-                <span className="font-medium text-gray-700">Hmotnost:</span>{" "}
+                <span className="font-medium" style={{ color: "var(--foreground)" }}>Hmotnost:</span>{" "}
                 {produkt.hmotnost_g} g
               </p>
             )}
             {produkt.kategorie && (
               <p>
-                <span className="font-medium text-gray-700">Kategorie:</span>{" "}
+                <span className="font-medium" style={{ color: "var(--foreground)" }}>Kategorie:</span>{" "}
                 {produkt.kategorie.nazev}
               </p>
             )}
           </div>
 
           {produkt.popis && (
-            <p className="text-sm text-gray-600 leading-relaxed">{produkt.popis}</p>
+            <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>{produkt.popis}</p>
           )}
 
           {/* Výběr barvy */}
@@ -316,7 +316,7 @@ export default function ProduktDetailPage({
             <div>
               <h3 className="text-sm font-semibold mb-2">
                 Barva:{" "}
-                <span className="font-normal text-gray-500">{selectedBarva?.nazev || "---"}</span>
+                <span className="font-normal" style={{ color: "var(--muted)" }}>{selectedBarva?.nazev || "---"}</span>
               </h3>
               <div className="flex flex-wrap gap-2">
                 {produkt.barvy.map((b) => (
@@ -328,7 +328,7 @@ export default function ProduktDetailPage({
                     className={`w-8 h-8 rounded-full border-2 transition-all cursor-pointer ${
                       selectedBarvaId === b.id
                         ? "border-primary ring-2 ring-primary/30 scale-110"
-                        : "border-gray-300 hover:border-gray-400"
+                        : "border-[var(--border)] hover:border-[var(--muted-light)]"
                     }`}
                     style={{ backgroundColor: b.hex_kod || "#ccc" }}
                   />
@@ -341,19 +341,19 @@ export default function ProduktDetailPage({
           {skladItems.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold mb-2">Dostupné velikosti</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-4 py-2 font-medium text-gray-700">Velikost</th>
-                      <th className="text-right px-4 py-2 font-medium text-gray-700">Skladem</th>
+                    <tr style={{ background: "var(--surface-2)" }}>
+                      <th className="text-left px-4 py-2 font-medium" style={{ color: "var(--foreground)" }}>Velikost</th>
+                      <th className="text-right px-4 py-2 font-medium" style={{ color: "var(--foreground)" }}>Skladem</th>
                     </tr>
                   </thead>
                   <tbody>
                     {skladItems.map((s) => (
                       <tr
                         key={s.id}
-                        className={`border-t border-gray-100 ${s.skladem === 0 ? "text-gray-400" : ""}`}
+                        style={{ borderTop: "1px solid var(--border)", color: s.skladem === 0 ? "var(--muted-light)" : undefined }}
                       >
                         <td className="px-4 py-2 font-medium">{s.velikost}</td>
                         <td className="px-4 py-2 text-right">
@@ -371,7 +371,7 @@ export default function ProduktDetailPage({
           )}
 
           {selectedBarva && skladItems.length === 0 && (
-            <p className="text-sm text-gray-400">Informace o dostupnosti nejsou k dispozici.</p>
+            <p className="text-sm" style={{ color: "var(--muted-light)" }}>Informace o dostupnosti nejsou k dispozici.</p>
           )}
 
           {/* CTA */}

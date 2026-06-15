@@ -169,7 +169,10 @@ export default function MerchDetailPage({
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
             <div className="px-5 py-4" style={{ background: "var(--primary-50)" }}>
               <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>Cena za kus</p>
-              <span className="text-2xl font-bold" style={{ color: "var(--primary)" }}>{formatCena(unitCena)}</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold" style={{ color: "var(--primary)" }}>{formatCena(unitCena)}</span>
+                <span className="text-sm" style={{ color: "var(--muted-light)" }}>vč. DPH</span>
+              </div>
             </div>
           </div>
 

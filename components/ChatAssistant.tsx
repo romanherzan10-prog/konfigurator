@@ -260,7 +260,7 @@ export default function ChatAssistant() {
         className="shrink-0 px-5 pt-4 pb-3"
         style={{
           borderBottom: "1px solid var(--border)",
-          background: "linear-gradient(180deg, var(--primary-50, #EFF6FF) 0%, var(--surface) 100%)",
+          background: "linear-gradient(180deg, var(--primary-50) 0%, var(--surface) 100%)",
         }}
       >
         {/* Agent info + new chat */}
@@ -303,8 +303,8 @@ export default function ChatAssistant() {
               }}
               onMouseEnter={e => {
                 (e.currentTarget as HTMLElement).style.color = "var(--primary)";
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100, #DBEAFE)";
-                (e.currentTarget as HTMLElement).style.background = "var(--primary-50, #EFF6FF)";
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100)";
+                (e.currentTarget as HTMLElement).style.background = "var(--primary-50)";
               }}
               onMouseLeave={e => {
                 (e.currentTarget as HTMLElement).style.color = "var(--muted)";
@@ -352,7 +352,7 @@ export default function ChatAssistant() {
                 {idx < 3 && (
                   <div
                     className="flex-1 h-px mx-2 transition-all duration-300"
-                    style={{ background: isPast ? "var(--primary-100, #DBEAFE)" : "var(--border)" }}
+                    style={{ background: isPast ? "var(--primary-100)" : "var(--border)" }}
                   />
                 )}
               </div>
@@ -395,8 +395,8 @@ export default function ChatAssistant() {
                     color: "var(--muted)",
                   }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.background = "var(--primary-50, #EFF6FF)";
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100, #DBEAFE)";
+                    (e.currentTarget as HTMLElement).style.background = "var(--primary-50)";
+                    (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100)";
                     (e.currentTarget as HTMLElement).style.color = "var(--primary)";
                   }}
                   onMouseLeave={e => {
@@ -453,8 +453,8 @@ export default function ChatAssistant() {
               <div
                 className="flex items-center gap-2.5 px-4 py-2.5 text-sm rounded-2xl rounded-tl-sm"
                 style={{
-                  background: "var(--primary-50, #EFF6FF)",
-                  border: "1px solid var(--primary-100, #DBEAFE)",
+                  background: "var(--primary-50)",
+                  border: "1px solid var(--primary-100)",
                   color: "var(--primary)",
                   boxShadow: "var(--shadow-sm)",
                 }}
@@ -551,7 +551,7 @@ export default function ChatAssistant() {
             }}
             onFocus={e => {
               (e.currentTarget as HTMLElement).style.borderColor = "var(--primary)";
-              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(30,64,175,0.08)";
+              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(139,92,246,0.12)";
               (e.currentTarget as HTMLElement).style.background = "var(--surface)";
             }}
             onBlur={e => {
@@ -610,7 +610,7 @@ export default function ChatAssistant() {
             <div className="p-6">
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: "var(--primary-50, #EFF6FF)", color: "var(--primary)" }}
+                style={{ background: "var(--primary-50)", color: "var(--primary)" }}
               >
                 <MessageSquare className="w-6 h-6" />
               </div>
