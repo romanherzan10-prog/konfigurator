@@ -751,6 +751,13 @@ function HomeInner() {
       console.error("[poptavka_polozky]", polozkyError.message);
     }
 
+    // Notifikace (Telegram staff + potvrzovací e-mail) — fire-and-forget, neblokuje úspěch
+    fetch("/api/poptavka-notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ poptavka_id: poptavkaId }),
+    }).catch(() => {});
+
     clearCart();
     setSubmitted(true);
   }
