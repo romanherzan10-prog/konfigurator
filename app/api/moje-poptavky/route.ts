@@ -48,5 +48,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ email: user.email, poptavky: data ?? [] });
+  const poptavky = data ?? [];
+
+  // Strukturované položky pro všechny poptávky najednou
+  const ids = poptavky.map((p) => p.id);
+  const polozkyMap: Record<string, unknown[]> = {};
+  if (ids.length > 0) {
+    const { data: pol } = await admin
+      .from("poptavka_polozky")
+      .select(
+        "poptavka_id, poradi, nazev, kategorie, barva, velikost, mnozstvi, typ_zpracovani, cena_celkem_s_dph, nahled_url"
+      )
+      .in("poptavka_id", ids)
+      .order("poradi", { ascending: true });
+    for (const r of pol ?? []) {
+      const k = (r as { poptavka_id: string }).poptavka_id;
+      (polozkyMap[k] ??= []).push(r);
+    }
+  }
+
+  const out = poptavky.map((p) => ({
+    ...p,
+    dalsi_info: ((p.dalsi_info as string | null) ?? "").split("\n---")[0].trim() || null,
+    polozky: polozkyMap[p.id] ?? [],
+  }));
+
+  return NextResponse.json({ email: user.email, poptavky: out });
 }

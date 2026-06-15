@@ -86,6 +86,8 @@ export default function ProduktDetailPage({
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [selectedBarvaId, setSelectedBarvaId] = useState<string | null>(null);
+  const [mockupy, setMockupy] = useState<string[]>([]);
+  const [activeImg, setActiveImg] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -108,6 +110,14 @@ export default function ProduktDetailPage({
           if (p.barvy && p.barvy.length > 0) {
             setSelectedBarvaId(p.barvy[0].id);
           }
+          // Kurované mockup fotky (s logem) z katalog_kurace
+          const { data: kur } = await sb
+            .from("katalog_kurace")
+            .select("mockup_fotky")
+            .eq("kod", kod)
+            .maybeSingle();
+          const mk = (kur?.mockup_fotky as string[] | null) ?? [];
+          setMockupy(Array.isArray(mk) ? mk.filter(Boolean) : []);
         }
       } catch {
         setNotFound(true);
@@ -117,6 +127,11 @@ export default function ProduktDetailPage({
     }
     load();
   }, [kod]);
+
+  // Při změně barvy zruš ruční výběr náhledu (velký obrázek pak sleduje barvu)
+  useEffect(() => {
+    setActiveImg(null);
+  }, [selectedBarvaId]);
 
   useEffect(() => {
     if (!produkt) return;
@@ -158,6 +173,8 @@ export default function ProduktDetailPage({
 
   const selectedBarva = produkt.barvy?.find((b) => b.id === selectedBarvaId) || null;
   const displayImage = selectedBarva?.obrazek_url || produkt.obrazek_url || null;
+  const galerie = [displayImage, ...mockupy].filter(Boolean) as string[];
+  const bigImage = activeImg && galerie.includes(activeImg) ? activeImg : displayImage;
   const skladItems = selectedBarva?.sklad ? [...selectedBarva.sklad].sort(sortVelikosti) : [];
 
   const hasCeny = cenaOd != null;
@@ -180,9 +197,9 @@ export default function ProduktDetailPage({
             className="aspect-square rounded-2xl flex items-center justify-center overflow-hidden"
             style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
           >
-            {displayImage ? (
+            {bigImage ? (
               <img
-                src={displayImage}
+                src={bigImage}
                 alt={selectedBarva ? `${produkt.nazev} - ${selectedBarva.nazev}` : produkt.nazev}
                 className="w-full h-full object-contain p-6"
               />
@@ -190,6 +207,36 @@ export default function ProduktDetailPage({
               <span className="text-8xl opacity-20">👕</span>
             )}
           </div>
+          {/* Náhledové dlaždice — produkt + mockup fotky s logem */}
+          {galerie.length > 1 && (
+            <div className="flex gap-2 flex-wrap mt-3">
+              {galerie.map((src, i) => {
+                const aktivni = src === bigImage;
+                const jeMockup = mockupy.includes(src);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setActiveImg(src)}
+                    className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0"
+                    style={{
+                      border: `2px solid ${aktivni ? "var(--primary)" : "var(--border)"}`,
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <img src={src} alt="" className="w-full h-full object-contain p-1" />
+                    {jeMockup && (
+                      <span
+                        className="absolute bottom-0 inset-x-0 text-[8px] font-bold text-center py-0.5"
+                        style={{ background: "var(--primary)", color: "#fff" }}
+                      >
+                        UKÁZKA
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Info vpravo */}
