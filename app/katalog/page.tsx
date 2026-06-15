@@ -37,6 +37,17 @@ interface Kategorie {
   poradi: number | null;
 }
 
+interface Kurace {
+  kod: string;
+  top: boolean;
+  poradi: number;
+  barva_override: string | null;
+  mockup_fotky: string[] | null;
+  nazev: string | null;
+  obrazek_url: string | null;
+  min_cena: number | null;
+}
+
 interface Znacka {
   id: string;
   nazev: string;
@@ -111,6 +122,8 @@ export default function KatalogPage() {
   const [sortBy, setSortBy] = useState("nazev");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [zdroj, setZdroj] = useState<"textil" | "merch">("textil");
+  const [topProdukty, setTopProdukty] = useState<Kurace[]>([]);
+  const [kuraceMap, setKuraceMap] = useState<Record<string, Kurace>>({});
 
   const offsetRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -129,6 +142,15 @@ export default function KatalogPage() {
       setKategorie((katRes.data as Kategorie[]) || []);
       setZnacky((znRes.data as Znacka[]) || []);
     });
+    // Kurace katalogu (top produkty, mockupy, override barvy)
+    sb.from("katalog_kurace")
+      .select("kod, top, poradi, barva_override, mockup_fotky, nazev, obrazek_url, min_cena")
+      .order("poradi", { ascending: true })
+      .then(({ data }) => {
+        const rows = (data as Kurace[]) || [];
+        setTopProdukty(rows.filter((r) => r.top));
+        setKuraceMap(Object.fromEntries(rows.map((r) => [r.kod, r])));
+      });
   }, []);
 
   const fetchProducts = useCallback(
@@ -299,6 +321,68 @@ export default function KatalogPage() {
       {zdroj === "merch" ? (
         <MerchGrid />
       ) : (
+      <>
+      {!hasFilters && topProdukty.length > 0 && (
+        <section className="mb-10">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">⭐</span>
+            <h2 className="text-lg font-bold" style={{ color: "var(--foreground)" }}>
+              Doporučujeme
+            </h2>
+            <span className="text-sm" style={{ color: "var(--muted)" }}>
+              · naše tipy na míru s ukázkou potisku
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            {topProdukty.map((t) => {
+              const img = (t.mockup_fotky && t.mockup_fotky[0]) || t.obrazek_url;
+              return (
+                <a
+                  key={t.kod}
+                  href={`/katalog/${t.kod}`}
+                  className="group rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 relative"
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--primary)",
+                    boxShadow: "var(--shadow-sm)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <span
+                    className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full"
+                    style={{ background: "var(--primary)", color: "#fff" }}
+                  >
+                    ⭐ Tip
+                  </span>
+                  <div className="aspect-square flex items-center justify-center overflow-hidden p-3" style={{ background: "var(--surface-2)" }}>
+                    {img ? (
+                      <img src={img} alt={t.nazev ?? t.kod} loading="lazy" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <Package className="w-10 h-10" style={{ color: "var(--muted-light)" }} />
+                    )}
+                  </div>
+                  <div className="p-4 flex flex-col flex-1">
+                    <h3 className="font-semibold text-sm leading-tight mb-1 line-clamp-2 group-hover:text-primary transition-colors" style={{ color: "var(--foreground)" }}>
+                      {t.nazev ?? t.kod}
+                    </h3>
+                    {t.barva_override && (
+                      <p className="text-xs mb-1" style={{ color: "var(--muted-light)" }}>Barva: {t.barva_override}</p>
+                    )}
+                    {t.min_cena != null && (
+                      <div className="mt-auto pt-2">
+                        <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>
+                          od {Number(t.min_cena).toLocaleString("cs-CZ")} Kč
+                        </span>
+                        <span className="text-xs ml-1" style={{ color: "var(--muted-light)" }}>bez DPH</span>
+                      </div>
+                    )}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <div className="flex flex-col lg:flex-row gap-8">
         {/* ── Sidebar ──────────────────────────────────── */}
         <aside
@@ -437,28 +521,39 @@ export default function KatalogPage() {
                 Zobrazeno {produkty.length} z {totalCount.toLocaleString("cs-CZ")} produktů
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                {produkty.map((p) => (
+                {produkty.map((p) => {
+                  const ku = kuraceMap[p.kod];
+                  const cardImg = (ku?.mockup_fotky && ku.mockup_fotky[0]) || p.obrazek_url;
+                  return (
                   <a
                     key={p.id}
                     href={`/katalog/${p.kod}`}
-                    className="group rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5"
+                    className="group rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 relative"
                     style={{
                       background: "var(--surface)",
-                      border: "1px solid var(--border)",
+                      border: `1px solid ${ku?.top ? "var(--primary)" : "var(--border)"}`,
                       boxShadow: "var(--shadow-sm)",
                       textDecoration: "none",
                     }}
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-lg)"}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-sm)"}
                   >
+                    {ku?.top && (
+                      <span
+                        className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full"
+                        style={{ background: "var(--primary)", color: "#fff" }}
+                      >
+                        ⭐ Tip
+                      </span>
+                    )}
                     {/* Image */}
                     <div
                       className="aspect-square flex items-center justify-center overflow-hidden p-3"
                       style={{ background: "var(--surface-2)" }}
                     >
-                      {p.obrazek_url ? (
+                      {cardImg ? (
                         <img
-                          src={p.obrazek_url}
+                          src={cardImg}
                           alt={p.nazev}
                           loading="lazy"
                           className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
@@ -508,7 +603,8 @@ export default function KatalogPage() {
                       )}
                     </div>
                   </a>
-                ))}
+                  );
+                })}
               </div>
 
               <div ref={sentinelRef} className="h-4" />
@@ -531,6 +627,7 @@ export default function KatalogPage() {
           )}
         </div>
       </div>
+      </>
       )}
     </div>
   );
