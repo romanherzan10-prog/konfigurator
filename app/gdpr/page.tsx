@@ -14,10 +14,12 @@ export default function GdprPage() {
         <section>
           <h2 className="text-base font-semibold mb-2">1. Správce údajů</h2>
           <p style={{ color: "var(--muted)" }}>
-            Správcem osobních údajů je provozovatel značky LOOOKU. Kontakt pro otázky
-            k ochraně údajů: <a href="mailto:info@loooku.cz" className="underline" style={{ color: "var(--primary)" }}>info@loooku.cz</a>.
+            Správcem osobních údajů je <strong>CAROLINE STAR, spol. s r.o.</strong>, IČO 65408152,
+            DIČ CZ65408152, se sídlem Bartoškova 1411/20, Nusle, 140 00 Praha 4 (provozovatel značky LOOOKU).
+            Kontakt pro otázky k ochraně údajů:{" "}
+            <a href="mailto:loookucz@gmail.com" className="underline" style={{ color: "var(--primary)" }}>loookucz@gmail.com</a>,
             {" "}
-            <span style={{ color: "var(--muted-light)" }}>(Doplňte prosím obchodní jméno, IČO a sídlo.)</span>
+            <a href="tel:+420739165191" className="underline" style={{ color: "var(--primary)" }}>+420 739 165 191</a>.
           </p>
         </section>
 
@@ -67,8 +69,8 @@ export default function GdprPage() {
         </section>
 
         <p className="text-xs pt-4" style={{ color: "var(--muted-light)", borderTop: "1px solid var(--border)" }}>
-          Tento dokument je obecný vzor — před ostrým provozem jej nechte zkontrolovat a doplňte
-          konkrétní firemní údaje. Naposledy upraveno: {new Date().toLocaleDateString("cs-CZ")}.
+          Doporučujeme nechat dokument před ostrým provozem zkontrolovat. Naposledy upraveno:{" "}
+          {new Date().toLocaleDateString("cs-CZ")}.
         </p>
 
         <a href="/" className="inline-block text-sm" style={{ color: "var(--primary)" }}>
