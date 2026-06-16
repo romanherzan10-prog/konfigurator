@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, RotateCcw, Send, AlertCircle } from "lucide-react";
+import { MessageSquare, RotateCcw, Send, AlertCircle, Square, RefreshCw } from "lucide-react";
 
 type Message =
   | { role: "user"; content: string }
@@ -62,11 +62,32 @@ export default function ChatAssistant() {
   const [gdprAccepted, setGdprAccepted] = useState(false);
   const [showGdpr, setShowGdpr] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Když je true, u chybové hlášky se zobrazí tlačítko „Zkusit znovu".
+  const [canRetry, setCanRetry] = useState(false);
   // Klikací rychlé odpovědi navržené Michalem (tool navrhni_moznosti)
   const [pendingOptions, setPendingOptions] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Never-stuck infrastruktura ↓
+  // AbortController aktuálního streamu — umožní Stop i watchdog přerušení.
+  const abortRef = useRef<AbortController | null>(null);
+  // Poslední odeslaná zpráva (+ zda přeskočit GDPR) — pro „Zkusit znovu".
+  const lastSentRef = useRef<{ text: string; skipGdpr: boolean } | null>(null);
+  // true = stream jsme přerušili schválně (Stop / watchdog), ne chyba serveru.
+  const abortedByUserRef = useRef(false);
+  // "user-stop" = ruční Stop, "watchdog" = timeout ticha. Rozliší hlášku.
+  const abortReasonRef = useRef<"user-stop" | "watchdog" | null>(null);
+
+  // Konstanty watchdogu
+  const SILENCE_TIMEOUT_MS = 28000; // max ticho serveru, než to vzdáme
+
+  // Zruší probíhající stream (Stop tlačítko nebo nový request).
+  const abortActiveStream = useCallback((byUser: boolean) => {
+    abortedByUserRef.current = byUser;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   const startNewSession = useCallback(async () => {
     try {
@@ -85,6 +106,7 @@ export default function ChatAssistant() {
   }, []);
 
   const resetChat = useCallback(async () => {
+    abortActiveStream(true);
     const oldId = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (oldId) {
       try {
@@ -99,13 +121,17 @@ export default function ChatAssistant() {
     setMessages([]);
     setInput("");
     setError(null);
+    setCanRetry(false);
     setActiveTool(null);
+    setIsLoading(false);
+    setPendingOptions([]);
+    lastSentRef.current = null;
     setGdprAccepted(false);
     setShowGdpr(false);
     setCurrentStep("produkt");
     setSessionId(null);
     await startNewSession();
-  }, [startNewSession]);
+  }, [startNewSession, abortActiveStream]);
 
   useEffect(() => {
     (async () => {
@@ -131,7 +157,21 @@ export default function ChatAssistant() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, activeTool]);
+  }, [messages, activeTool, error, pendingOptions]);
+
+  // Po dokončení načítání vrať fokus do inputu (pohodlné psaní dál).
+  useEffect(() => {
+    if (!isLoading && sessionId) inputRef.current?.focus();
+  }, [isLoading, sessionId]);
+
+  // Při odmountování přeruš případný běžící stream (žádný leak / zaseknutí).
+  useEffect(() => {
+    return () => {
+      abortedByUserRef.current = true;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeTool) { setToolMessageIdx(0); setElapsedSec(0); return; }
@@ -157,32 +197,63 @@ export default function ChatAssistant() {
     async (text: string, opts?: { skipGdpr?: boolean }) => {
       if (!sessionId || !text.trim() || isLoading) return;
       setError(null);
+      setCanRetry(false);
       const looksLikeContact = /@[\w.-]+\.[a-z]{2,}/i.test(text) || /\+?\d[\d\s-]{7,}/.test(text);
       if (!opts?.skipGdpr && !gdprAccepted && (currentStep === "kontakt" || looksLikeContact)) {
         setShowGdpr(true);
         setInput(text);
         return;
       }
+      // Zapamatuj si poslední odeslání pro „Zkusit znovu".
+      lastSentRef.current = { text, skipGdpr: !!opts?.skipGdpr };
       setInput("");
       const userMsg: Message = { role: "user", content: text };
       setMessages((m) => [...m, userMsg, { role: "assistant", content: "", streaming: true }]);
       setIsLoading(true);
       setActiveTool(null);
       setPendingOptions([]);
+
+      // ── Never-stuck: AbortController + watchdog ──────────────
+      const controller = new AbortController();
+      abortRef.current = controller;
+      abortedByUserRef.current = false;
+      abortReasonRef.current = null;
+      let assistantText = "";
+      let gotDone = false;
+      // Watchdog: pokud server příliš dlouho mlčí (žádný text/tool/done),
+      // stream přerušíme a nabídneme „Zkusit znovu" — nikdy věčný spinner.
+      let watchdog: ReturnType<typeof setTimeout> | null = null;
+      const armWatchdog = () => {
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          // timeout = záměrné přerušení watchdogem (ne chyba serveru)
+          abortedByUserRef.current = true;
+          abortReasonRef.current = "watchdog";
+          controller.abort("watchdog-timeout");
+        }, SILENCE_TIMEOUT_MS);
+      };
+      const disarmWatchdog = () => {
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = null;
+      };
+
       try {
+        armWatchdog();
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, message: text }),
+          signal: controller.signal,
         });
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let assistantText = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          // Jakákoli aktivita od serveru (i heartbeat) → resetuj watchdog.
+          armWatchdog();
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n\n");
           buffer = lines.pop() ?? "";
@@ -207,13 +278,18 @@ export default function ChatAssistant() {
               } else if (event.type === "tool_end") {
                 setActiveTool(null);
               } else if (event.type === "done") {
+                gotDone = true;
+                disarmWatchdog();
                 setMessages((prev) => {
                   const copy = [...prev];
                   if (assistantText.trim() === "") return copy.slice(0, -1);
                   copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: false };
                   return copy;
                 });
-                if (assistantText.trim() === "") setError("Něco se nepodařilo. Zkuste to prosím napsat jinak, nebo začněte nový chat.");
+                if (assistantText.trim() === "") {
+                  setError("Michal tentokrát neměl co říct. Zkuste to prosím znovu nebo napište jinak.");
+                  setCanRetry(true);
+                }
               } else if (event.type === "error") {
                 throw new Error(event.error);
               }
@@ -222,16 +298,92 @@ export default function ChatAssistant() {
             }
           }
         }
+        // Stream skončil bez „done" — pokud něco dorazilo, dořeš bublinu;
+        // jinak to ber jako ticho/výpadek a nabídni opakování.
+        if (!gotDone) {
+          if (assistantText.trim() !== "") {
+            setMessages((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (last?.role === "assistant" && "streaming" in last && last.streaming) {
+                copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: false };
+              }
+              return copy;
+            });
+          } else {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant" && !last.content) return prev.slice(0, -1);
+              return prev;
+            });
+            setError("Spojení se přerušilo dřív, než Michal dopsal. Zkusíme to znovu?");
+            setCanRetry(true);
+          }
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Chyba při odesílání.");
-        setMessages((prev) => prev.slice(0, -1));
+        const aborted =
+          abortedByUserRef.current ||
+          (err instanceof DOMException && err.name === "AbortError") ||
+          (err instanceof Error && /abort/i.test(err.message));
+        // Odstraň prázdnou „streaming" bublinu, ať tam nezůstane věčný spinner.
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && !last.content) return prev.slice(0, -1);
+          return prev;
+        });
+        // Pokud přišel aspoň kus textu, ukliď bublinu jako dokončenou.
+        if (assistantText.trim() !== "") {
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant" && "streaming" in last && last.streaming) {
+              copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: false };
+            }
+            return copy;
+          });
+        }
+        if (aborted) {
+          if (abortReasonRef.current === "user-stop") {
+            // Ruční Stop — žádná chyba, jen tichá nabídka pokračovat.
+            if (assistantText.trim() === "") {
+              setError("Generování zastaveno. Napište zprávu, nebo to zkuste znovu.");
+              setCanRetry(true);
+            }
+          } else {
+            // Watchdog timeout (server příliš dlouho mlčel).
+            setError("Michal se zakoukal — zkusíme to znovu?");
+            setCanRetry(true);
+          }
+        } else {
+          setError(err instanceof Error ? err.message : "Chyba při odesílání.");
+          setCanRetry(true);
+        }
       } finally {
+        disarmWatchdog();
+        if (abortRef.current === controller) abortRef.current = null;
         setIsLoading(false);
         setActiveTool(null);
       }
     },
     [sessionId, isLoading, currentStep, gdprAccepted]
   );
+
+  // Ruční přerušení (tlačítko Stop). Ukliď bublinu, žádný věčný spinner.
+  const stopGeneration = useCallback(() => {
+    if (!abortRef.current) return;
+    abortedByUserRef.current = true;
+    abortReasonRef.current = "user-stop";
+    abortRef.current.abort("user-stop");
+  }, []);
+
+  // „Zkusit znovu" — znovu odešle poslední zprávu.
+  const retryLast = useCallback(() => {
+    const last = lastSentRef.current;
+    if (!last || isLoading) return;
+    setError(null);
+    setCanRetry(false);
+    sendMessage(last.text, { skipGdpr: last.skipGdpr });
+  }, [isLoading, sendMessage]);
 
   const acceptGdpr = async () => {
     if (!sessionId) return;
@@ -302,6 +454,7 @@ export default function ChatAssistant() {
                 if (!isLoading || confirm("Opravdu chcete začít nový chat?")) resetChat();
               }}
               disabled={isLoading}
+              aria-label="Začít nový chat"
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-all cursor-pointer disabled:opacity-40"
               style={{
                 background: "var(--surface)",
@@ -395,7 +548,7 @@ export default function ChatAssistant() {
                   key={ex}
                   onClick={() => sendMessage(ex)}
                   disabled={!sessionId || isLoading}
-                  className="text-xs px-3 py-1.5 rounded-full border font-medium transition-all cursor-pointer disabled:opacity-50"
+                  className="text-[13px] px-3.5 py-2 rounded-full border font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left leading-snug"
                   style={{
                     background: "var(--surface)",
                     borderColor: "var(--border)",
@@ -423,7 +576,8 @@ export default function ChatAssistant() {
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className="max-w-[86%] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+              aria-live={msg.role === "assistant" && "streaming" in msg && msg.streaming ? "polite" : undefined}
+              className="max-w-[86%] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words"
               style={
                 msg.role === "user"
                   ? {
@@ -454,27 +608,29 @@ export default function ChatAssistant() {
 
         {/* Klikací rychlé odpovědi (navržené Michalem) */}
         {pendingOptions.length > 0 && !isLoading && !activeTool && (
-          <div className="flex flex-wrap gap-2 pl-1 pt-1">
+          <div className="flex flex-wrap gap-2 pl-1 pt-1" role="group" aria-label="Rychlé odpovědi">
             {pendingOptions.map((opt) => (
               <button
                 key={opt}
                 onClick={() => sendMessage(opt)}
                 disabled={!sessionId || isLoading}
-                className="text-xs px-3 py-1.5 rounded-full border font-medium transition-all cursor-pointer disabled:opacity-50"
+                className="text-[13px] px-4 py-2 rounded-full border font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left leading-snug active:scale-[0.97]"
                 style={{ background: "var(--primary-50)", borderColor: "var(--primary-100)", color: "var(--primary)" }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--primary)";
                   (e.currentTarget as HTMLElement).style.color = "#fff";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--primary)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = "var(--primary-50)";
                   (e.currentTarget as HTMLElement).style.color = "var(--primary)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100)";
                 }}
               >
                 {opt}
               </button>
             ))}
-            <span className="w-full text-[11px] pl-1" style={{ color: "var(--muted-light)" }}>
+            <span className="w-full text-[11px] pl-1 pt-0.5" style={{ color: "var(--muted-light)" }}>
               …nebo napište vlastní odpověď
             </span>
           </div>
@@ -536,18 +692,41 @@ export default function ChatAssistant() {
           </div>
         )}
 
-        {/* Error */}
+        {/* Error / přerušení — vždy s cestou ven (Zkusit znovu) */}
         {error && (
           <div
-            className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm"
+            className="flex flex-col gap-2.5 px-4 py-3 rounded-xl text-sm"
+            role="alert"
+            aria-live="assertive"
             style={{
               background: "#FEF2F2",
               border: "1px solid #FECACA",
               color: "#DC2626",
             }}
           >
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            {error}
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+            {canRetry && lastSentRef.current && (
+              <button
+                type="button"
+                onClick={retryLast}
+                disabled={isLoading}
+                className="self-start inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                style={{ background: "var(--primary)", color: "#fff", boxShadow: "var(--shadow-sm)" }}
+                onMouseEnter={(e) => {
+                  if (!(e.currentTarget as HTMLButtonElement).disabled)
+                    (e.currentTarget as HTMLElement).style.background = "var(--primary-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--primary)";
+                }}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Zkusit znovu
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -595,35 +774,60 @@ export default function ChatAssistant() {
               (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
             }}
           />
-          <button
-            type="submit"
-            disabled={!sessionId || isLoading || !input.trim()}
-            className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              background: "var(--primary)",
-              color: "#fff",
-              boxShadow: "var(--shadow-sm)",
-            }}
-            onMouseEnter={e => {
-              if (!(e.currentTarget as HTMLButtonElement).disabled) {
-                (e.currentTarget as HTMLElement).style.background = "var(--primary-hover)";
-                (e.currentTarget as HTMLElement).style.transform = "scale(1.05)";
-              }
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "var(--primary)";
-              (e.currentTarget as HTMLElement).style.transform = "scale(1)";
-            }}
-          >
-            {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
+          {isLoading ? (
+            // Stop — kdykoli přeruší generování (žádný věčný spinner).
+            <button
+              type="button"
+              onClick={stopGeneration}
+              aria-label="Zastavit odpověď"
+              title="Zastavit"
+              className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all cursor-pointer"
+              style={{
+                background: "var(--surface-2)",
+                border: "1.5px solid var(--border)",
+                color: "var(--muted)",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--primary-100)";
+                (e.currentTarget as HTMLElement).style.color = "var(--primary)";
+                (e.currentTarget as HTMLElement).style.background = "var(--primary-50)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                (e.currentTarget as HTMLElement).style.color = "var(--muted)";
+                (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
+              }}
+            >
+              <Square className="w-3.5 h-3.5" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!sessionId || !input.trim()}
+              aria-label="Odeslat zprávu"
+              className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: "var(--primary)",
+                color: "#fff",
+                boxShadow: "var(--shadow-sm)",
+              }}
+              onMouseEnter={e => {
+                if (!(e.currentTarget as HTMLButtonElement).disabled) {
+                  (e.currentTarget as HTMLElement).style.background = "var(--primary-hover)";
+                  (e.currentTarget as HTMLElement).style.transform = "scale(1.05)";
+                }
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = "var(--primary)";
+                (e.currentTarget as HTMLElement).style.transform = "scale(1)";
+              }}
+            >
               <Send className="w-4 h-4" />
-            )}
-          </button>
+            </button>
+          )}
         </form>
         <p className="text-[11px] mt-2 text-center" style={{ color: "var(--muted-light)" }}>
-          Enter pro odeslání · Shift+Enter pro nový řádek
+          {isLoading ? "Michal píše… (můžete kliknout na Stop)" : "Enter pro odeslání · Shift+Enter pro nový řádek"}
         </p>
       </div>
 
