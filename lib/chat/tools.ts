@@ -185,6 +185,22 @@ export const CHAT_TOOLS: Tool[] = [
       required: ["moznosti"],
     },
   },
+  {
+    name: "zobraz_produkty",
+    description:
+      "Zobrazí zákazníkovi vizuální kolotoč produktových karet (náhled, název, cena vč. DPH, proklik na produkt). POVINNĚ použij, kdykoliv konkrétně doporučuješ produkty (typicky ve fázi kalkulace) — místo dlouhého textového výčtu. Předej 2–4 katalogové kódy z výsledků search_products. V textu pak produkty zmiň jen krátce; detaily uvidí zákazník na kartách.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kody: {
+          type: "array",
+          items: { type: "string" },
+          description: "2–4 katalogové kódy produktů k zobrazení (přesně jak je vrátil search_products, např. '01.U01W').",
+        },
+      },
+      required: ["kody"],
+    },
+  },
 ];
 
 // ============================================================
@@ -226,6 +242,8 @@ export async function executeTool(
       case "navrhni_moznosti":
         // Žádný side-effect — možnosti se zákazníkovi doručí jako SSE event z /api/chat.
         return { tool_name: toolName, result: { ok: true, zobrazeno: input.moznosti ?? [] } };
+      case "zobraz_produkty":
+        return { tool_name: toolName, result: await toolZobrazProdukty(input) };
       default:
         return {
           tool_name: toolName,
@@ -277,13 +295,14 @@ async function toolSearchProducts(input: Record<string, unknown>) {
   // Kompaktní shape pro Claude (~80 tokenů/produkt místo 500+)
   return {
     pocet: data?.length ?? 0,
+    poznamka_ceny: "Ceny jsou orientační prodejní VČETNĚ DPH za kus. Vždy to zákazníkovi takto uveď.",
     produkty: (data ?? []).map((p: Record<string, unknown>) => ({
       kod: p.kod,
       nazev: p.nazev,
       znacka: p.znacka,
       kategorie: p.kategorie,
       gsm: p.gsm ? `${p.gsm} g/m²` : null,
-      cena_od: p.cena_od ? `${p.cena_od} Kč (při 1000+ ks)` : null,
+      cena_od: p.cena_od ? `od ${p.cena_od} Kč vč. DPH (při 1000+ ks)` : null,
       material: p.material,
       barev: p.barvy_pocet,
       velikosti: (p.velikosti_skladem as string[] | null)?.join(", "),
@@ -320,6 +339,7 @@ async function toolGetProductDetail(input: Record<string, unknown>) {
     gsm: p.gsm,
     material: p.material,
     popis: p.popis,
+    poznamka_ceny: "Ceny jsou orientační prodejní VČETNĚ DPH za kus. Uváděj je vždy jako 'vč. DPH'.",
     ceny: {
       "1 ks": p.cena_1ks ? `${p.cena_1ks} Kč` : null,
       "10 ks": p.cena_10ks ? `${p.cena_10ks} Kč` : null,
@@ -506,4 +526,69 @@ async function toolSubmitInquiry(
     zprava:
       "Poptávka byla uložena. Ozveme se do 1 hodiny s finální nabídkou na zadaný e-mail.",
   };
+}
+
+// ------------------------------------------------------------
+// 6) zobraz_produkty — kolotoč karet (náhled + cena vč. DPH + proklik)
+// ------------------------------------------------------------
+
+export interface ProduktKarta {
+  kod: string;
+  nazev: string;
+  cena: string | null;
+  obrazek_url: string | null;
+  url: string;
+}
+
+async function toolZobrazProdukty(input: Record<string, unknown>) {
+  const kody = (Array.isArray(input.kody) ? input.kody : [])
+    .map((k) => String(k).trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (kody.length === 0) return { ok: false, produkty: [] as ProduktKarta[] };
+
+  const supabase = getSupabaseAdmin();
+  const produkty: ProduktKarta[] = [];
+
+  const textilKody = kody.filter((k) => !k.startsWith("PF-"));
+  const merchKody = kody.filter((k) => k.startsWith("PF-"));
+
+  if (textilKody.length) {
+    const { data } = await supabase
+      .from("produkty_katalog_flat")
+      .select("kod, nazev, cena_od, obrazek_url")
+      .in("kod", textilKody);
+    for (const p of (data ?? []) as Record<string, unknown>[]) {
+      produkty.push({
+        kod: String(p.kod),
+        nazev: String(p.nazev),
+        cena: p.cena_od != null ? `od ${Math.round(Number(p.cena_od))} Kč vč. DPH` : null,
+        obrazek_url: (p.obrazek_url as string) ?? null,
+        url: `/katalog/${encodeURIComponent(String(p.kod))}`,
+      });
+    }
+  }
+
+  if (merchKody.length) {
+    const { data } = await supabase
+      .from("printify_produkty")
+      .select("kod, nazev, obrazek_url, min_cena")
+      .in("kod", merchKody)
+      .eq("visible", true);
+    for (const p of (data ?? []) as Record<string, unknown>[]) {
+      produkty.push({
+        kod: String(p.kod),
+        nazev: String(p.nazev),
+        cena: p.min_cena != null ? `od ${Math.round(Number(p.min_cena))} Kč vč. DPH` : null,
+        obrazek_url: (p.obrazek_url as string) ?? null,
+        url: `/merch/${encodeURIComponent(String(p.kod))}`,
+      });
+    }
+  }
+
+  // zachovej pořadí dle vstupních kódů
+  const order = new Map(kody.map((k, i) => [k, i]));
+  produkty.sort((a, b) => (order.get(a.kod) ?? 99) - (order.get(b.kod) ?? 99));
+
+  return { ok: true, produkty };
 }
