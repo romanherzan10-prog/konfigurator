@@ -136,8 +136,8 @@ export default function KatalogPage() {
   useEffect(() => {
     const sb = getSupabase();
     Promise.all([
-      sb.from("kategorie").select("*").order("poradi"),
-      sb.from("znacky").select("*").order("nazev"),
+      sb.from("kategorie").select("*").eq("skryta", false).order("poradi"),
+      sb.from("znacky").select("*").eq("skryta", false).order("nazev"),
     ]).then(([katRes, znRes]) => {
       setKategorie((katRes.data as Kategorie[]) || []);
       setZnacky((znRes.data as Znacka[]) || []);
@@ -619,7 +619,23 @@ export default function KatalogPage() {
                 </div>
               )}
 
-              {offsetRef.current >= totalCount && totalCount > PAGE_SIZE && (
+              {/* Explicitní načtení dalších (fallback k automatickému donačítání) */}
+              {!loadingMore && produkty.length < totalCount && (
+                <div className="flex flex-col items-center gap-2 py-8">
+                  <button
+                    type="button"
+                    onClick={() => fetchProducts(produkty.length, true)}
+                    className="btn btn-primary px-6 py-2.5 text-sm"
+                  >
+                    Načíst další produkty
+                  </button>
+                  <span className="text-xs" style={{ color: "var(--muted-light)" }}>
+                    Zobrazeno {produkty.length} z {totalCount.toLocaleString("cs-CZ")}
+                  </span>
+                </div>
+              )}
+
+              {produkty.length >= totalCount && totalCount > PAGE_SIZE && (
                 <p className="text-center text-sm py-6" style={{ color: "var(--muted-light)" }}>
                   Zobrazeny všechny produkty
                 </p>
