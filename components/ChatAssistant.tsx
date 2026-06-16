@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, RotateCcw, Send, AlertCircle, Square, RefreshCw } from "lucide-react";
+import { MessageSquare, RotateCcw, Send, AlertCircle, Square, RefreshCw, ChevronLeft, ChevronRight, Paperclip, Check, Loader2 } from "lucide-react";
 
 type Message =
   | { role: "user"; content: string }
@@ -76,6 +76,11 @@ export default function ChatAssistant() {
   const [pendingOptions, setPendingOptions] = useState<string[]>([]);
   // Kolotoč produktových karet navržený Michalem (tool zobraz_produkty)
   const [pendingProducts, setPendingProducts] = useState<ProduktKarta[]>([]);
+  // Logo přiložené zákazníkem v chatu (uloží se k poptávce)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -136,6 +141,7 @@ export default function ChatAssistant() {
     setIsLoading(false);
     setPendingOptions([]);
     setPendingProducts([]);
+    setLogoUrl(null);
     lastSentRef.current = null;
     setGdprAccepted(false);
     setShowGdpr(false);
@@ -416,6 +422,47 @@ export default function ChatAssistant() {
     if (pendingText) { setInput(""); sendMessage(pendingText, { skipGdpr: true }); }
   };
 
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !sessionId) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setError("Soubor je příliš velký (max 8 MB).");
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/upload-logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nazev: file.name, typ: file.type, data_base64: dataUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Nahrání selhalo.");
+      setLogoUrl(json.url);
+      // Ulož logo k session → submit_inquiry ho dá k poptávce
+      await fetch("/api/chat-session", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, logo_url: json.url }),
+      }).catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nahrání loga selhalo.");
+    } finally {
+      setLogoUploading(false);
+    }
+  }
+
+  const scrollCarousel = (dir: -1 | 1) => {
+    carouselRef.current?.scrollBy({ left: dir * 320, behavior: "smooth" });
+  };
+
   const stepKeys = Object.keys(STEP_LABELS) as StepKey[];
   const currentStepIdx = stepKeys.indexOf(currentStep);
 
@@ -624,11 +671,35 @@ export default function ChatAssistant() {
 
         {/* Kolotoč produktových karet (zobraz_produkty) */}
         {pendingProducts.length > 0 && (
+          <div className="relative -mx-1">
+          {pendingProducts.length > 2 && (
+            <>
+              <button
+                type="button"
+                onClick={() => scrollCarousel(-1)}
+                aria-label="Předchozí produkty"
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow-md"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--primary)" }}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollCarousel(1)}
+                aria-label="Další produkty"
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow-md"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--primary)" }}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </>
+          )}
           <div
-            className="flex gap-3 overflow-x-auto pb-1 pt-1 -mx-1 px-1"
+            ref={carouselRef}
+            className="flex gap-3 overflow-x-auto pb-1 pt-1 px-1 scroll-smooth"
             style={{ scrollbarWidth: "thin" }}
             role="group"
-            aria-label="Doporučené produkty"
+            aria-label="Doporučené produkty (posuňte pro další)"
           >
             {pendingProducts.map((p) => (
               <a
@@ -661,6 +732,7 @@ export default function ChatAssistant() {
                 </div>
               </a>
             ))}
+          </div>
           </div>
         )}
 
@@ -794,10 +866,43 @@ export default function ChatAssistant() {
         className="shrink-0 px-4 py-3"
         style={{ borderTop: "1px solid var(--border)", background: "var(--surface)" }}
       >
+        {logoUrl && (
+          <div className="flex items-center gap-2 mb-2 text-xs" style={{ color: "var(--primary)" }}>
+            <Check className="w-3.5 h-3.5" />
+            <span>Logo přiloženo</span>
+            <button
+              type="button"
+              onClick={() => setLogoUrl(null)}
+              className="underline"
+              style={{ color: "var(--muted)" }}
+            >
+              odebrat
+            </button>
+          </div>
+        )}
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/*,.pdf,.svg,.ai,.eps"
+          className="hidden"
+          onChange={handleLogoUpload}
+        />
         <form
           onSubmit={(e) => { e.preventDefault(); if (input.trim()) sendMessage(input); }}
           className="flex gap-2 items-end"
         >
+          {/* 📎 Přiložit logo */}
+          <button
+            type="button"
+            onClick={() => logoInputRef.current?.click()}
+            disabled={!sessionId || logoUploading}
+            aria-label="Přiložit logo"
+            title="Přiložit logo"
+            className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all cursor-pointer disabled:opacity-40"
+            style={{ background: "var(--surface-2)", border: "1.5px solid var(--border)", color: logoUrl ? "var(--primary)" : "var(--muted)" }}
+          >
+            {logoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </button>
           <textarea
             ref={inputRef}
             value={input}
