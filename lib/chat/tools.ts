@@ -211,6 +211,24 @@ export const CHAT_TOOLS: Tool[] = [
       required: ["kody"],
     },
   },
+  {
+    name: "pridej_polozku",
+    description:
+      "Přidá JEDEN produkt do poptávky zákazníka. Poptávka může mít víc produktů — pro každý vybraný produkt zavolej tento tool zvlášť. Volej, když si zákazník produkt vybere (klikne 'Vybrat' u karty nebo to napíše). Po přidání se KRÁTCE zeptej (přes navrhni_moznosti), jestli chce 'Přidat další produkt' nebo 'Dokončit poptávku'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nazev: { type: "string", description: "Název produktu (povinné)." },
+        produkt_kod: { type: "string", description: "Katalogový kód, pokud ho znáš (z search_products)." },
+        mnozstvi: { type: "number", description: "Počet kusů tohoto produktu." },
+        barva: { type: "string" },
+        velikost: { type: "string" },
+        zdobeni: { type: "string", enum: ["potisk", "vysivka", "bez"], description: "Typ zdobení této položky." },
+        cena_ks_orientacni: { type: "number", description: "Orientační cena za kus VČ. DPH." },
+      },
+      required: ["nazev"],
+    },
+  },
 ];
 
 // ============================================================
@@ -254,6 +272,8 @@ export async function executeTool(
         return { tool_name: toolName, result: { ok: true, zobrazeno: input.moznosti ?? [] } };
       case "zobraz_produkty":
         return { tool_name: toolName, result: await toolZobrazProdukty(input) };
+      case "pridej_polozku":
+        return { tool_name: toolName, result: await toolPridejPolozku(input, ctx) };
       default:
         return {
           tool_name: toolName,
@@ -455,20 +475,61 @@ async function toolSubmitInquiry(
   const typZpracovani =
     zpracovMap[String(extracted.zdobeni_typ ?? "")] ?? "clean";
 
-  const mnozstvi = Math.max(1, Math.min(5000, Number(extracted.mnozstvi ?? 1)));
-
-  // Orientační cena (vč. DPH) + kód produktu z konverzace → předvyplní kalkulaci v ERP
-  const cenaKs =
-    Number(input.cena_ks_orientacni) > 0 ? Math.round(Number(input.cena_ks_orientacni)) : null;
-  const cenaCelkem = cenaKs != null ? cenaKs * mnozstvi : null;
-  const produktKod = input.produkt_kod ? String(input.produkt_kod).trim() : null;
   // Logo, které zákazník případně přiložil v chatu (uloženo do extracted.logo_url přes UI)
   const logoUrl = (extracted as { logo_url?: string }).logo_url ?? null;
+
+  // Položky poptávky — víc vybraných produktů (extracted.polozky) NEBO jeden fallback z konverzace.
+  type ChatPolozka = {
+    produkt_kod?: string | null; nazev?: string; mnozstvi?: number | null;
+    barva?: string | null; velikost?: string | null; zdobeni?: string | null; cena_ks_orientacni?: number | null;
+  };
+  const vybrane: ChatPolozka[] = Array.isArray((extracted as { polozky?: unknown }).polozky)
+    ? ((extracted as { polozky: ChatPolozka[] }).polozky)
+    : [];
+  const fallbackMnozstvi = Math.max(1, Math.min(5000, Number(extracted.mnozstvi ?? 1)));
+
+  const radky = (
+    vybrane.length > 0
+      ? vybrane.map((p) => {
+          const q = Number(p.mnozstvi) > 0 ? Math.min(5000, Math.round(Number(p.mnozstvi))) : fallbackMnozstvi;
+          const ks = Number(p.cena_ks_orientacni) > 0 ? Math.round(Number(p.cena_ks_orientacni)) : null;
+          return {
+            katalogove_cislo: p.produkt_kod ? String(p.produkt_kod).trim() : null,
+            nazev: String(p.nazev || extracted.typ_produktu || "Produkt").slice(0, 120),
+            typ_zpracovani: p.zdobeni ? (zpracovMap[String(p.zdobeni)] ?? String(p.zdobeni)) : typZpracovani,
+            barva: p.barva ? String(p.barva).slice(0, 120) : null,
+            velikost: p.velikost ? String(p.velikost).slice(0, 120) : null,
+            mnozstvi: q,
+            cena_ks_s_dph: ks,
+            cena_celkem_s_dph: ks != null ? ks * q : null,
+          };
+        })
+      : [
+          {
+            katalogove_cislo: input.produkt_kod ? String(input.produkt_kod).trim() : null,
+            nazev: String(extracted.typ_produktu || input.souhrn || "Poptávka z chatu").slice(0, 120),
+            typ_zpracovani: typZpracovani,
+            barva: extracted.barvy ? String(extracted.barvy).slice(0, 120) : null,
+            velikost: extracted.velikosti ? String(extracted.velikosti).slice(0, 120) : null,
+            mnozstvi: fallbackMnozstvi,
+            cena_ks_s_dph: Number(input.cena_ks_orientacni) > 0 ? Math.round(Number(input.cena_ks_orientacni)) : null,
+            cena_celkem_s_dph:
+              Number(input.cena_ks_orientacni) > 0 ? Math.round(Number(input.cena_ks_orientacni)) * fallbackMnozstvi : null,
+          },
+        ]
+  );
+
+  const totalMnozstvi = radky.reduce((s, r) => s + r.mnozstvi, 0);
+  const totalCelkem = radky.some((r) => r.cena_celkem_s_dph != null)
+    ? radky.reduce((s, r) => s + (r.cena_celkem_s_dph ?? 0), 0)
+    : null;
+  const odhadKs = totalCelkem != null && totalMnozstvi > 0 ? Math.round(totalCelkem / totalMnozstvi) : null;
 
   // Čistá poznámka (žádný JSON dump) — strukturovaná data jdou do extracted_from_chat + poptavka_polozky
   const cistaPoznamka = [
     input.souhrn,
     input.firma ? `Firma: ${input.firma}` : null,
+    radky.length > 1 ? `Poptávka obsahuje ${radky.length} produktů.` : null,
     "(Poptávka vznikla přes chat s Michalem.)",
   ]
     .filter(Boolean)
@@ -483,12 +544,12 @@ async function toolSubmitInquiry(
       telefon: input.telefon ?? "",
       typ_produktu: typProduktu,
       typ_zpracovani: typZpracovani,
-      mnozstvi,
+      mnozstvi: totalMnozstvi,
       dalsi_info: cistaPoznamka,
       logo_soubor_url: logoUrl,
       logo_soubor_nazev: logoUrl ? "Logo z chatu" : null,
-      odhadovana_cena_ks: cenaKs,
-      odhadovana_cena_celkem: cenaCelkem,
+      odhadovana_cena_ks: odhadKs,
+      odhadovana_cena_celkem: totalCelkem,
       chat_session_id: ctx.sessionId,
       extracted_from_chat: extracted as object,
       stav: "nova",
@@ -498,23 +559,18 @@ async function toolSubmitInquiry(
 
   if (error) throw new Error(`submit_inquiry insert: ${error.message}`);
 
-  // Strukturovaná položka — aby poptávka z chatu vypadala v ERP stejně jako z formuláře,
-  // s orientační cenou + kódem produktu (předvyplní kalkulaci a převod na zakázku).
-  await supabase.from("poptavka_polozky").insert({
-    poptavka_id: inquiry!.id,
-    poradi: 0,
-    kind: "textil",
-    katalogove_cislo: produktKod,
-    nazev: String(extracted.typ_produktu || input.souhrn || "Poptávka z chatu").slice(0, 120),
-    kategorie: null,
-    typ_zpracovani: typZpracovani,
-    barva: extracted.barvy ? String(extracted.barvy).slice(0, 120) : null,
-    velikost: extracted.velikosti ? String(extracted.velikosti).slice(0, 120) : null,
-    mnozstvi,
-    cena_ks_s_dph: cenaKs,
-    cena_celkem_s_dph: cenaCelkem,
-    nahled_url: logoUrl,
-  });
+  // Strukturované položky — poptávka z chatu vypadá v ERP stejně jako z formuláře
+  // (kód + cena předvyplní kalkulaci a převod na zakázku).
+  await supabase.from("poptavka_polozky").insert(
+    radky.map((r, i) => ({
+      poptavka_id: inquiry!.id,
+      poradi: i,
+      kind: "textil",
+      kategorie: null,
+      nahled_url: logoUrl,
+      ...r,
+    }))
+  );
 
   // Označ session jako completed + zapiš analytics event
   await supabase
@@ -615,4 +671,38 @@ async function toolZobrazProdukty(input: Record<string, unknown>) {
   produkty.sort((a, b) => (order.get(a.kod) ?? 99) - (order.get(b.kod) ?? 99));
 
   return { ok: true, produkty };
+}
+
+// ------------------------------------------------------------
+// 7) pridej_polozku — přidá produkt do (víceproduktové) poptávky (do session.extracted.polozky)
+// ------------------------------------------------------------
+
+async function toolPridejPolozku(input: Record<string, unknown>, ctx: ToolContext) {
+  const supabase = getSupabaseAdmin();
+  const { data: current } = await supabase
+    .from("chat_sessions")
+    .select("extracted")
+    .eq("id", ctx.sessionId)
+    .single();
+
+  const extracted = (current?.extracted ?? {}) as Record<string, unknown>;
+  const polozky = Array.isArray(extracted.polozky) ? [...(extracted.polozky as unknown[])] : [];
+
+  polozky.push({
+    produkt_kod: input.produkt_kod ? String(input.produkt_kod).trim() : null,
+    nazev: String(input.nazev ?? "Produkt").slice(0, 120),
+    mnozstvi: Number(input.mnozstvi) > 0 ? Math.round(Number(input.mnozstvi)) : null,
+    barva: input.barva ? String(input.barva).slice(0, 120) : null,
+    velikost: input.velikost ? String(input.velikost).slice(0, 120) : null,
+    zdobeni: input.zdobeni ? String(input.zdobeni) : null,
+    cena_ks_orientacni:
+      Number(input.cena_ks_orientacni) > 0 ? Math.round(Number(input.cena_ks_orientacni)) : null,
+  });
+
+  await supabase
+    .from("chat_sessions")
+    .update({ extracted: { ...extracted, polozky }, last_message_at: new Date().toISOString() })
+    .eq("id", ctx.sessionId);
+
+  return { ok: true, pocet_polozek: polozky.length };
 }
