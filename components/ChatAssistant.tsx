@@ -17,7 +17,7 @@ const STEP_LABELS: Record<StepKey, string> = {
 };
 
 const WELCOME_MESSAGE =
-  "Dobrý den, jsem Jarda Kužel z LOOOKU. Popište mi, co potřebujete — během pár minut vám připravím orientační cenu a poradím s výběrem. Můžete začít třeba takhle:";
+  "Ahoj, tady Michal z LOOOKU 👋 Řekněte mi, co potřebujete — poradím s výběrem (co a proč) a během pár minut připravím orientační cenu. Můžete začít třeba takhle:";
 
 const TOOL_STATUS_MESSAGES: Record<string, string[]> = {
   search_products: [
@@ -280,7 +280,7 @@ export default function ChatAssistant() {
             </div>
             <div>
               <div className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>
-                Jarda Kužel
+                Michal
               </div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
                 Obchodník LOOOKU · pomůže s poptávkou
@@ -496,7 +496,7 @@ export default function ChatAssistant() {
                   style={{ background: "var(--muted-light)", animationDelay: `${d}ms` }}
                 />
               ))}
-              <span>Jarda píše…</span>
+              <span>Michal píše…</span>
             </div>
           </div>
         )}

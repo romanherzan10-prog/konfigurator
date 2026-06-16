@@ -2,7 +2,7 @@
  * Odborná knihovna doporučení LOOOKU.
  *
  * Toto je centrální místo, kde Roman (majitel) sepisuje své
- * know-how a doporučení k produktům. Jarda Kužel (AI asistent)
+ * know-how a doporučení k produktům. Michal (AI asistent)
  * z toho čerpá při odpovídání zákazníkům.
  *
  * STRUKTURA:
@@ -10,7 +10,8 @@
  * - DOPORUCENI_DLE_PRODUKTU — odborné poznámky ke konkrétním produktům/značkám
  * - TIPY_A_VAROVÁNÍ — obecné rady, na co si dát pozor
  *
- * Roman: edituj přímo tady, Jarda to bude mít okamžitě po deployi.
+ * Roman: edituj přímo tady (nebo mi pošli text/soubor a já ho sem doplním),
+ * Michal to bude mít okamžitě po deployi.
  */
 
 // ============================================================
