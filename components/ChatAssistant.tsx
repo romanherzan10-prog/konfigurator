@@ -702,35 +702,51 @@ export default function ChatAssistant() {
             aria-label="Doporučené produkty (posuňte pro další)"
           >
             {pendingProducts.map((p) => (
-              <a
+              <div
                 key={p.kod}
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 w-[150px] rounded-xl overflow-hidden flex flex-col transition-transform hover:-translate-y-0.5"
-                style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", textDecoration: "none" }}
+                className="shrink-0 w-[160px] rounded-xl overflow-hidden flex flex-col"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}
               >
-                <div className="aspect-square flex items-center justify-center overflow-hidden" style={{ background: "var(--surface-2)" }}>
-                  {p.obrazek_url ? (
-                    <img src={p.obrazek_url} alt={p.nazev} loading="lazy" className="w-full h-full object-contain p-2" />
-                  ) : (
-                    <MessageSquare className="w-8 h-8" style={{ color: "var(--muted-light)" }} />
-                  )}
-                </div>
-                <div className="p-2.5 flex flex-col flex-1">
-                  <span className="text-xs font-semibold leading-tight line-clamp-2" style={{ color: "var(--foreground)" }}>
-                    {p.nazev}
-                  </span>
-                  {p.cena && (
-                    <span className="text-xs font-bold mt-1" style={{ color: "var(--primary)" }}>
-                      {p.cena}
+                {/* Klik na obrázek/název = odkaz na produkt */}
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col transition-transform hover:-translate-y-0.5"
+                  style={{ textDecoration: "none" }}
+                >
+                  <div className="aspect-square flex items-center justify-center overflow-hidden" style={{ background: "var(--surface-2)" }}>
+                    {p.obrazek_url ? (
+                      <img src={p.obrazek_url} alt={p.nazev} loading="lazy" className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <MessageSquare className="w-8 h-8" style={{ color: "var(--muted-light)" }} />
+                    )}
+                  </div>
+                  <div className="px-2.5 pt-2.5 flex flex-col flex-1">
+                    <span className="text-xs font-semibold leading-tight line-clamp-2" style={{ color: "var(--foreground)" }}>
+                      {p.nazev}
                     </span>
-                  )}
-                  <span className="text-[11px] mt-1.5 font-medium" style={{ color: "var(--primary)" }}>
-                    Zobrazit →
-                  </span>
-                </div>
-              </a>
+                    {p.cena && (
+                      <span className="text-xs font-bold mt-1" style={{ color: "var(--primary)" }}>
+                        {p.cena}
+                      </span>
+                    )}
+                    <span className="text-[11px] mt-1 mb-2 font-medium" style={{ color: "var(--muted)" }}>
+                      Detail produktu →
+                    </span>
+                  </div>
+                </a>
+                {/* Vybrat = zůstat v chatu a přidat do poptávky */}
+                <button
+                  type="button"
+                  onClick={() => sendMessage(`Vyberu produkt ${p.nazev} (${p.kod}).`)}
+                  disabled={!sessionId || isLoading}
+                  className="mx-2.5 mb-2.5 mt-auto text-xs font-semibold py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  style={{ background: "var(--primary)", color: "#fff" }}
+                >
+                  ✓ Vybrat
+                </button>
+              </div>
             ))}
           </div>
           </div>
