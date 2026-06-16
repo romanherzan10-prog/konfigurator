@@ -164,6 +164,16 @@ export const CHAT_TOOLS: Tool[] = [
           description:
             "Krátký textový souhrn poptávky, který se zobrazí v mailu a v CRM — 'Co zákazník chce' v 2-3 větách.",
         },
+        produkt_kod: {
+          type: "string",
+          description:
+            "Nepovinné, ale DOPORUČENÉ: katalogový kód hlavního doporučeného produktu (z search_products, např. '01.U01W'). Předvyplní položku poptávky a v ERP se automaticky napáruje nákupní cena z ceníku.",
+        },
+        cena_ks_orientacni: {
+          type: "number",
+          description:
+            "Nepovinné, ale DOPORUČENÉ: orientační prodejní cena za kus VČ. DPH (střed rozmezí, které jsi zákazníkovi řekl). Předvyplní kalkulaci v ERP, ať se rychle připraví nabídka.",
+        },
       },
       required: ["jmeno", "email", "souhrn"],
     },
@@ -446,6 +456,15 @@ async function toolSubmitInquiry(
     zpracovMap[String(extracted.zdobeni_typ ?? "")] ?? "clean";
 
   const mnozstvi = Math.max(1, Math.min(5000, Number(extracted.mnozstvi ?? 1)));
+
+  // Orientační cena (vč. DPH) + kód produktu z konverzace → předvyplní kalkulaci v ERP
+  const cenaKs =
+    Number(input.cena_ks_orientacni) > 0 ? Math.round(Number(input.cena_ks_orientacni)) : null;
+  const cenaCelkem = cenaKs != null ? cenaKs * mnozstvi : null;
+  const produktKod = input.produkt_kod ? String(input.produkt_kod).trim() : null;
+  // Logo, které zákazník případně přiložil v chatu (uloženo do extracted.logo_url přes UI)
+  const logoUrl = (extracted as { logo_url?: string }).logo_url ?? null;
+
   // Čistá poznámka (žádný JSON dump) — strukturovaná data jdou do extracted_from_chat + poptavka_polozky
   const cistaPoznamka = [
     input.souhrn,
@@ -466,6 +485,10 @@ async function toolSubmitInquiry(
       typ_zpracovani: typZpracovani,
       mnozstvi,
       dalsi_info: cistaPoznamka,
+      logo_soubor_url: logoUrl,
+      logo_soubor_nazev: logoUrl ? "Logo z chatu" : null,
+      odhadovana_cena_ks: cenaKs,
+      odhadovana_cena_celkem: cenaCelkem,
       chat_session_id: ctx.sessionId,
       extracted_from_chat: extracted as object,
       stav: "nova",
@@ -475,21 +498,22 @@ async function toolSubmitInquiry(
 
   if (error) throw new Error(`submit_inquiry insert: ${error.message}`);
 
-  // Strukturovaná položka — aby poptávka z chatu vypadala v ERP stejně jako z formuláře
-  // a dala se převést na zakázku (cena z chatu je jen orientační → necháváme prázdnou).
+  // Strukturovaná položka — aby poptávka z chatu vypadala v ERP stejně jako z formuláře,
+  // s orientační cenou + kódem produktu (předvyplní kalkulaci a převod na zakázku).
   await supabase.from("poptavka_polozky").insert({
     poptavka_id: inquiry!.id,
     poradi: 0,
     kind: "textil",
+    katalogove_cislo: produktKod,
     nazev: String(extracted.typ_produktu || input.souhrn || "Poptávka z chatu").slice(0, 120),
     kategorie: null,
     typ_zpracovani: typZpracovani,
     barva: extracted.barvy ? String(extracted.barvy).slice(0, 120) : null,
     velikost: extracted.velikosti ? String(extracted.velikosti).slice(0, 120) : null,
     mnozstvi,
-    cena_ks_s_dph: null,
-    cena_celkem_s_dph: null,
-    nahled_url: null,
+    cena_ks_s_dph: cenaKs,
+    cena_celkem_s_dph: cenaCelkem,
+    nahled_url: logoUrl,
   });
 
   // Označ session jako completed + zapiš analytics event

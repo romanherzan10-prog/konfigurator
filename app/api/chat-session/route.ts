@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const supabase = getSupabaseAdmin();
 
-  let body: { sessionId?: string; gdpr_consent?: boolean; status?: string };
+  let body: { sessionId?: string; gdpr_consent?: boolean; status?: string; logo_url?: string };
   try {
     body = await req.json();
   } catch {
@@ -95,7 +95,7 @@ export async function PATCH(req: NextRequest) {
   const requesterIpHash = hashIp(extractIp(req));
   const { data: existing } = await supabase
     .from("chat_sessions")
-    .select("ip_hash")
+    .select("ip_hash, extracted")
     .eq("id", body.sessionId)
     .single();
 
@@ -128,6 +128,19 @@ export async function PATCH(req: NextRequest) {
         payload: {},
       });
     }
+  }
+
+  // Logo přiložené v chatu → ulož URL do extracted (submit_inquiry ho pak dá k poptávce)
+  if (typeof body.logo_url === "string" && body.logo_url) {
+    updates.extracted = {
+      ...((existing as { extracted?: Record<string, unknown> }).extracted ?? {}),
+      logo_url: body.logo_url,
+    };
+    await supabase.from("chat_events").insert({
+      session_id: body.sessionId,
+      event_type: "logo_uploaded",
+      payload: {},
+    });
   }
 
   const { error } = await supabase
