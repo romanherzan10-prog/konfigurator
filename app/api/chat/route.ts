@@ -117,11 +117,12 @@ export async function POST(req: NextRequest) {
           blocks.push(tc);
         }
         messages.push({ role: "assistant", content: blocks });
-        // Přidej tool_result zprávu
+        // Přidej tool_result zprávu — MUSÍ to být validní tool_result bloky
+        // (type:"tool_result", tool_use_id, content), jinak Anthropic API tah odmítne.
         if (row.tool_results) {
           messages.push({
             role: "user",
-            content: row.tool_results as unknown as string,
+            content: row.tool_results as unknown as MessageParam["content"],
           });
         }
       } else {
@@ -151,8 +152,14 @@ export async function POST(req: NextRequest) {
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
       const toolCallLog: ToolUseBlock[] = [];
-      const toolResultLog: Array<{ tool_use_id: string; content: unknown }> =
-        [];
+      // Ukládáme PLNÉ tool_result bloky (type + tool_use_id + content + is_error),
+      // aby přehrání historie v dalším tahu bylo validní pro Anthropic API.
+      const toolResultLog: Array<{
+        type: "tool_result";
+        tool_use_id: string;
+        content: string;
+        is_error: boolean;
+      }> = [];
 
       // Heartbeat — drží SSE spojení živé i během dlouhých tool callů
       // (Vercel/Nginx někdy zařízne idle TCP > 30s)
@@ -253,12 +260,7 @@ export async function POST(req: NextRequest) {
             )
           );
 
-          toolResultLog.push(
-            ...toolResults.map((tr) => ({
-              tool_use_id: tr.tool_use_id,
-              content: tr.content,
-            }))
-          );
+          toolResultLog.push(...toolResults);
 
           // Přidej tool_result zprávu do historie → Claude na to zareaguje v další iteraci
           messages.push({
