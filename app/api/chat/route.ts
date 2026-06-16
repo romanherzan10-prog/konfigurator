@@ -214,8 +214,21 @@ export async function POST(req: NextRequest) {
           messages.push({ role: "assistant", content: finalMessage.content });
           toolCallLog.push(...toolUses);
 
-          // Oznámíme UI, že probíhá tool call (pro "hledám v katalogu..." indikátor)
+          // Oznámíme UI, že probíhá tool call (pro "hledám v katalogu..." indikátor).
+          // navrhni_moznosti není "práce" — pošleme rovnou klikací možnosti (chips), bez spinneru.
           for (const toolUse of toolUses) {
+            if (toolUse.name === "navrhni_moznosti") {
+              const moznosti = (toolUse.input as { moznosti?: unknown })?.moznosti;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "options",
+                    moznosti: Array.isArray(moznosti) ? moznosti : [],
+                  })}\n\n`
+                )
+              );
+              continue;
+            }
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
