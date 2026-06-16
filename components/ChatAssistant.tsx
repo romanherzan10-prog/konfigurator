@@ -7,6 +7,14 @@ type Message =
   | { role: "user"; content: string }
   | { role: "assistant"; content: string; streaming?: boolean };
 
+interface ProduktKarta {
+  kod: string;
+  nazev: string;
+  cena: string | null;
+  obrazek_url: string | null;
+  url: string;
+}
+
 type StepKey = "produkt" | "detaily" | "kalkulace" | "kontakt";
 
 const STEP_LABELS: Record<StepKey, string> = {
@@ -66,6 +74,8 @@ export default function ChatAssistant() {
   const [canRetry, setCanRetry] = useState(false);
   // Klikací rychlé odpovědi navržené Michalem (tool navrhni_moznosti)
   const [pendingOptions, setPendingOptions] = useState<string[]>([]);
+  // Kolotoč produktových karet navržený Michalem (tool zobraz_produkty)
+  const [pendingProducts, setPendingProducts] = useState<ProduktKarta[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -125,6 +135,7 @@ export default function ChatAssistant() {
     setActiveTool(null);
     setIsLoading(false);
     setPendingOptions([]);
+    setPendingProducts([]);
     lastSentRef.current = null;
     setGdprAccepted(false);
     setShowGdpr(false);
@@ -157,7 +168,7 @@ export default function ChatAssistant() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, activeTool, error, pendingOptions]);
+  }, [messages, activeTool, error, pendingOptions, pendingProducts]);
 
   // Po dokončení načítání vrať fokus do inputu (pohodlné psaní dál).
   useEffect(() => {
@@ -212,6 +223,7 @@ export default function ChatAssistant() {
       setIsLoading(true);
       setActiveTool(null);
       setPendingOptions([]);
+      setPendingProducts([]);
 
       // ── Never-stuck: AbortController + watchdog ──────────────
       const controller = new AbortController();
@@ -271,6 +283,10 @@ export default function ChatAssistant() {
               } else if (event.type === "options") {
                 if (Array.isArray(event.moznosti)) {
                   setPendingOptions(event.moznosti.filter((o: unknown) => typeof o === "string").slice(0, 6));
+                }
+              } else if (event.type === "products") {
+                if (Array.isArray(event.produkty)) {
+                  setPendingProducts(event.produkty.slice(0, 8) as ProduktKarta[]);
                 }
               } else if (event.type === "tool_start") {
                 setActiveTool({ name: event.name, startedAt: Date.now() });
@@ -605,6 +621,48 @@ export default function ChatAssistant() {
             </div>
           </div>
         ))}
+
+        {/* Kolotoč produktových karet (zobraz_produkty) */}
+        {pendingProducts.length > 0 && (
+          <div
+            className="flex gap-3 overflow-x-auto pb-1 pt-1 -mx-1 px-1"
+            style={{ scrollbarWidth: "thin" }}
+            role="group"
+            aria-label="Doporučené produkty"
+          >
+            {pendingProducts.map((p) => (
+              <a
+                key={p.kod}
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 w-[150px] rounded-xl overflow-hidden flex flex-col transition-transform hover:-translate-y-0.5"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", textDecoration: "none" }}
+              >
+                <div className="aspect-square flex items-center justify-center overflow-hidden" style={{ background: "var(--surface-2)" }}>
+                  {p.obrazek_url ? (
+                    <img src={p.obrazek_url} alt={p.nazev} loading="lazy" className="w-full h-full object-contain p-2" />
+                  ) : (
+                    <MessageSquare className="w-8 h-8" style={{ color: "var(--muted-light)" }} />
+                  )}
+                </div>
+                <div className="p-2.5 flex flex-col flex-1">
+                  <span className="text-xs font-semibold leading-tight line-clamp-2" style={{ color: "var(--foreground)" }}>
+                    {p.nazev}
+                  </span>
+                  {p.cena && (
+                    <span className="text-xs font-bold mt-1" style={{ color: "var(--primary)" }}>
+                      {p.cena}
+                    </span>
+                  )}
+                  <span className="text-[11px] mt-1.5 font-medium" style={{ color: "var(--primary)" }}>
+                    Zobrazit →
+                  </span>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
 
         {/* Klikací rychlé odpovědi (navržené Michalem) */}
         {pendingOptions.length > 0 && !isLoading && !activeTool && (

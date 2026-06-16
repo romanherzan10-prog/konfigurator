@@ -236,6 +236,8 @@ export async function POST(req: NextRequest) {
               );
               continue;
             }
+            // zobraz_produkty není "práce" se spinnerem — karty pošleme z výsledku níže.
+            if (toolUse.name === "zobraz_produkty") continue;
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -251,12 +253,25 @@ export async function POST(req: NextRequest) {
             toolUses.map((tu) =>
               executeTool(tu.name, tu.input as Record<string, unknown>, {
                 sessionId,
-              }).then((result) => ({
-                type: "tool_result" as const,
-                tool_use_id: tu.id,
-                content: JSON.stringify(result.result ?? { error: result.error }),
-                is_error: !!result.error,
-              }))
+              }).then((result) => {
+                // zobraz_produkty → pošli klientovi kolotoč karet
+                if (tu.name === "zobraz_produkty") {
+                  const produkty = (result.result as { produkty?: unknown })?.produkty;
+                  if (Array.isArray(produkty) && produkty.length > 0) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ type: "products", produkty })}\n\n`
+                      )
+                    );
+                  }
+                }
+                return {
+                  type: "tool_result" as const,
+                  tool_use_id: tu.id,
+                  content: JSON.stringify(result.result ?? { error: result.error }),
+                  is_error: !!result.error,
+                };
+              })
             )
           );
 
