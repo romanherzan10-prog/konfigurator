@@ -42,10 +42,10 @@ const TOOL_STATUS_MESSAGES: Record<string, string[]> = {
 };
 
 const EXAMPLES = [
-  "Potřebuju 50 triček s logem pro náš tým",
-  "Hledám firemní mikiny, máme cca 30 lidí",
-  "Chci kšiltovky s vyšitým logem",
-  "Prodejny, 100 ks polokošil s potiskem na hrudi",
+  "30 mikin do firmy s logem",
+  "50 triček na firemní akci",
+  "Kšiltovky s vyšitým logem",
+  "100 polokošil pro prodejnu",
 ];
 
 const STORAGE_KEY = "loooku_chat_session_id";
@@ -62,6 +62,8 @@ export default function ChatAssistant() {
   const [gdprAccepted, setGdprAccepted] = useState(false);
   const [showGdpr, setShowGdpr] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Klikací rychlé odpovědi navržené Michalem (tool navrhni_moznosti)
+  const [pendingOptions, setPendingOptions] = useState<string[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -166,6 +168,7 @@ export default function ChatAssistant() {
       setMessages((m) => [...m, userMsg, { role: "assistant", content: "", streaming: true }]);
       setIsLoading(true);
       setActiveTool(null);
+      setPendingOptions([]);
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -194,6 +197,10 @@ export default function ChatAssistant() {
                   copy[copy.length - 1] = { role: "assistant", content: assistantText, streaming: true };
                   return copy;
                 });
+              } else if (event.type === "options") {
+                if (Array.isArray(event.moznosti)) {
+                  setPendingOptions(event.moznosti.filter((o: unknown) => typeof o === "string").slice(0, 6));
+                }
               } else if (event.type === "tool_start") {
                 setActiveTool({ name: event.name, startedAt: Date.now() });
                 setToolMessageIdx(0); setElapsedSec(0);
@@ -271,7 +278,7 @@ export default function ChatAssistant() {
                 className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md"
                 style={{ background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)" }}
               >
-                JK
+                M
               </div>
               <div
                 className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
@@ -444,6 +451,34 @@ export default function ChatAssistant() {
             </div>
           </div>
         ))}
+
+        {/* Klikací rychlé odpovědi (navržené Michalem) */}
+        {pendingOptions.length > 0 && !isLoading && !activeTool && (
+          <div className="flex flex-wrap gap-2 pl-1 pt-1">
+            {pendingOptions.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => sendMessage(opt)}
+                disabled={!sessionId || isLoading}
+                className="text-xs px-3 py-1.5 rounded-full border font-medium transition-all cursor-pointer disabled:opacity-50"
+                style={{ background: "var(--primary-50)", borderColor: "var(--primary-100)", color: "var(--primary)" }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--primary)";
+                  (e.currentTarget as HTMLElement).style.color = "#fff";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--primary-50)";
+                  (e.currentTarget as HTMLElement).style.color = "var(--primary)";
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+            <span className="w-full text-[11px] pl-1" style={{ color: "var(--muted-light)" }}>
+              …nebo napište vlastní odpověď
+            </span>
+          </div>
+        )}
 
         {/* Tool indicator */}
         {activeTool && (() => {

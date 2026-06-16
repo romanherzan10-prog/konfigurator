@@ -168,6 +168,23 @@ export const CHAT_TOOLS: Tool[] = [
       required: ["jmeno", "email", "souhrn"],
     },
   },
+  {
+    name: "navrhni_moznosti",
+    description:
+      "Zobrazí zákazníkovi 2–6 klikacích rychlých odpovědí (chips) k otázce, kterou se právě ptáš. POVINNĚ použij vždy, když se ptáš na parametr s typickými volbami: účel použití, rozpočet (3 cenové hladiny), počet kusů, typ zdobení (potisk/výšivka/bez), velikost loga, barvy, velikosti, termín. Volej ZÁROVEŇ s textem otázky (text napiš normálně). Zákazník může místo kliknutí napsat i vlastní odpověď — možnosti tedy nemusí být vyčerpávající, slouží k urychlení.",
+    input_schema: {
+      type: "object",
+      properties: {
+        moznosti: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "2–6 krátkých konkrétních možností (ideálně do ~30 znaků). Např. rozpočet: ['do 200 Kč/ks','200–400 Kč/ks','400 Kč+ /ks']; zdobení: ['Potisk','Výšivka','Bez potisku']; účel: ['Firemní akce','Merch/dárky','Pracovní oděv','Tým/sport'].",
+        },
+      },
+      required: ["moznosti"],
+    },
+  },
 ];
 
 // ============================================================
@@ -206,6 +223,9 @@ export async function executeTool(
           tool_name: toolName,
           result: await toolSubmitInquiry(input, ctx),
         };
+      case "navrhni_moznosti":
+        // Žádný side-effect — možnosti se zákazníkovi doručí jako SSE event z /api/chat.
+        return { tool_name: toolName, result: { ok: true, zobrazeno: input.moznosti ?? [] } };
       default:
         return {
           tool_name: toolName,
