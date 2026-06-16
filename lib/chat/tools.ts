@@ -405,6 +405,16 @@ async function toolSubmitInquiry(
   const typZpracovani =
     zpracovMap[String(extracted.zdobeni_typ ?? "")] ?? "clean";
 
+  const mnozstvi = Math.max(1, Math.min(5000, Number(extracted.mnozstvi ?? 1)));
+  // Čistá poznámka (žádný JSON dump) — strukturovaná data jdou do extracted_from_chat + poptavka_polozky
+  const cistaPoznamka = [
+    input.souhrn,
+    input.firma ? `Firma: ${input.firma}` : null,
+    "(Poptávka vznikla přes chat s Michalem.)",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   const { data: inquiry, error } = await supabase
     .from("poptavky")
     .insert({
@@ -414,12 +424,8 @@ async function toolSubmitInquiry(
       telefon: input.telefon ?? "",
       typ_produktu: typProduktu,
       typ_zpracovani: typZpracovani,
-      mnozstvi: Math.max(1, Math.min(5000, Number(extracted.mnozstvi ?? 1))),
-      dalsi_info: JSON.stringify({
-        souhrn: input.souhrn,
-        firma: input.firma,
-        extracted,
-      }),
+      mnozstvi,
+      dalsi_info: cistaPoznamka,
       chat_session_id: ctx.sessionId,
       extracted_from_chat: extracted as object,
       stav: "nova",
@@ -428,6 +434,23 @@ async function toolSubmitInquiry(
     .single();
 
   if (error) throw new Error(`submit_inquiry insert: ${error.message}`);
+
+  // Strukturovaná položka — aby poptávka z chatu vypadala v ERP stejně jako z formuláře
+  // a dala se převést na zakázku (cena z chatu je jen orientační → necháváme prázdnou).
+  await supabase.from("poptavka_polozky").insert({
+    poptavka_id: inquiry!.id,
+    poradi: 0,
+    kind: "textil",
+    nazev: String(extracted.typ_produktu || input.souhrn || "Poptávka z chatu").slice(0, 120),
+    kategorie: null,
+    typ_zpracovani: typZpracovani,
+    barva: extracted.barvy ? String(extracted.barvy).slice(0, 120) : null,
+    velikost: extracted.velikosti ? String(extracted.velikosti).slice(0, 120) : null,
+    mnozstvi,
+    cena_ks_s_dph: null,
+    cena_celkem_s_dph: null,
+    nahled_url: null,
+  });
 
   // Označ session jako completed + zapiš analytics event
   await supabase
@@ -440,6 +463,22 @@ async function toolSubmitInquiry(
     event_type: "inquiry_submitted",
     payload: { inquiry_id: inquiry?.id, email: input.email },
   });
+
+  // Notifikace (Telegram staff + potvrzovací e-mail zákazníkovi) — stejně jako z formuláře
+  try {
+    const notifyUrl =
+      process.env.ERP_NOTIFY_URL || "https://textil-evidence.vercel.app/api/poptavky/notify";
+    const secret = process.env.NOTIFY_SECRET;
+    if (secret && inquiry?.id) {
+      await fetch(notifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-notify-secret": secret },
+        body: JSON.stringify({ poptavka_id: inquiry.id }),
+      });
+    }
+  } catch (e) {
+    console.warn("[submit_inquiry] notify failed:", e);
+  }
 
   return {
     ok: true,

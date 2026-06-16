@@ -246,7 +246,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <MessageCircle className="w-4 h-4" />
                 </span>
-                <span className="font-semibold text-sm">Poradce Jarda</span>
+                <span className="font-semibold text-sm">Poradce Michal</span>
               </div>
               <button
                 onClick={() => setChatOpen(false)}
