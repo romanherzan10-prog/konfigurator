@@ -119,6 +119,11 @@ export default function KatalogPage() {
   const [gsmMax, setGsmMax] = useState("");
   const [cenaMin, setCenaMin] = useState("");
   const [cenaMax, setCenaMax] = useState("");
+  const [bio, setBio] = useState(false);
+  const [recykl, setRecykl] = useState(false);
+  const [slozeni, setSlozeni] = useState("");
+  const [slozeniDebounced, setSlozeniDebounced] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
   const [sortBy, setSortBy] = useState("nazev");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [zdroj, setZdroj] = useState<"textil" | "merch">("textil");
@@ -132,6 +137,11 @@ export default function KatalogPage() {
     const t = setTimeout(() => setSearchDebounced(search), 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSlozeniDebounced(slozeni), 350);
+    return () => clearTimeout(t);
+  }, [slozeni]);
 
   useEffect(() => {
     const sb = getSupabase();
@@ -170,6 +180,9 @@ export default function KatalogPage() {
           page_offset: offset,
           page_limit: PAGE_SIZE,
           sort_by: sortBy,
+          p_bio: bio ? true : null,
+          p_recykl: recykl ? true : null,
+          p_slozeni: slozeniDebounced.trim() || null,
         });
         if (error) { console.error("katalog_search error:", error); return; }
         const rows = (data ?? []) as Produkt[];
@@ -183,7 +196,7 @@ export default function KatalogPage() {
         setLoadingMore(false);
       }
     },
-    [searchDebounced, selectedKategorie, selectedZnacka, gsmMin, gsmMax, cenaMin, cenaMax, sortBy]
+    [searchDebounced, selectedKategorie, selectedZnacka, gsmMin, gsmMax, cenaMin, cenaMax, sortBy, bio, recykl, slozeniDebounced]
   );
 
   useEffect(() => {
@@ -211,7 +224,10 @@ export default function KatalogPage() {
     (selectedZnacka ? 1 : 0) +
     (search.trim() ? 1 : 0) +
     (gsmMin || gsmMax ? 1 : 0) +
-    (cenaMin || cenaMax ? 1 : 0);
+    (cenaMin || cenaMax ? 1 : 0) +
+    (bio ? 1 : 0) +
+    (recykl ? 1 : 0) +
+    (slozeni.trim() ? 1 : 0);
 
   const hasFilters = activeFiltersCount > 0;
 
@@ -221,6 +237,7 @@ export default function KatalogPage() {
     setSearch("");
     setGsmMin(""); setGsmMax("");
     setCenaMin(""); setCenaMax("");
+    setBio(false); setRecykl(false); setSlozeni("");
     setSortBy("nazev");
   }
 
@@ -424,21 +441,56 @@ export default function KatalogPage() {
                 <input type="number" value={cenaMax} onChange={(e) => setCenaMax(e.target.value)} placeholder="do" className="input text-sm" />
               </div>
             </div>
+
+            {/* Detailní filtry — rozbalovací (materiál / udržitelnost / složení) */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setDetailOpen((o) => !o)}
+                className="flex items-center justify-between w-full text-xs font-semibold uppercase tracking-wider mb-1.5 cursor-pointer"
+                style={{ color: "var(--muted)" }}
+              >
+                Detailní filtry
+                <ChevronDown className={`w-4 h-4 transition-transform ${detailOpen ? "rotate-180" : ""}`} />
+              </button>
+              {detailOpen && (
+                <div className="space-y-2.5 pt-1">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: "var(--foreground)" }}>
+                    <input type="checkbox" checked={bio} onChange={(e) => setBio(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
+                    Bio / organická bavlna
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: "var(--foreground)" }}>
+                    <input type="checkbox" checked={recykl} onChange={(e) => setRecykl(e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" />
+                    Recyklovaný materiál
+                  </label>
+                  <div>
+                    <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Složení obsahuje…</span>
+                    <input
+                      type="text"
+                      value={slozeni}
+                      onChange={(e) => setSlozeni(e.target.value)}
+                      placeholder="např. bavlna, fleece, elastan"
+                      className="input text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </aside>
 
         {/* ── Grid ─────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
-          {/* Doporučujeme (top produkty) — stejná šířka i karty jako katalog */}
+          {/* Doporučujeme (top produkty) — kompaktní hlavička, stejné karty jako katalog */}
           {!hasFilters && topProdukty.length > 0 && (
-            <section className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">⭐</span>
-                <h2 className="text-lg font-bold" style={{ color: "var(--foreground)" }}>
+            <section className="mb-6">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="text-sm">⭐</span>
+                <h2 className="text-sm font-bold uppercase tracking-wide" style={{ color: "var(--foreground)" }}>
                   Doporučujeme
                 </h2>
-                <span className="text-sm" style={{ color: "var(--muted)" }}>
-                  · naše tipy s ukázkou potisku
+                <span className="text-xs" style={{ color: "var(--muted-light)" }}>
+                  · tipy s ukázkou potisku
                 </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
