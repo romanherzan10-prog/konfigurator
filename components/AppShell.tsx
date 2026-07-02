@@ -45,13 +45,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
     };
     refresh();
+    // storage event = změna košíku v JINÉM tabu (localStorage sync)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === "loooku_cart") refresh();
+    };
     window.addEventListener("focus", refresh);
     window.addEventListener("pageshow", refresh);
     window.addEventListener("cart-changed", refresh);
+    window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("pageshow", refresh);
       window.removeEventListener("cart-changed", refresh);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 

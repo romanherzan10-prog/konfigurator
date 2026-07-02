@@ -83,6 +83,7 @@ export default function ProduktDetailPage({
   const [produkt, setProdukt] = useState<ProduktDetail | null>(null);
   const [cenaOd, setCenaOd] = useState<number | null>(null);
   const [cenaDo, setCenaDo] = useState<number | null>(null);
+  const [cenaLoading, setCenaLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [selectedBarvaId, setSelectedBarvaId] = useState<string | null>(null);
@@ -139,6 +140,7 @@ export default function ProduktDetailPage({
     const url = `/api/produkt-price/${encodeURIComponent(kod)}${
       barvaParam ? `?barva=${encodeURIComponent(barvaParam)}` : ""
     }`;
+    setCenaLoading(true);
     fetch(url)
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { cenaOd: number | null; cenaDo: number | null } | null) => {
@@ -148,7 +150,8 @@ export default function ProduktDetailPage({
       .catch(() => {
         setCenaOd(null);
         setCenaDo(null);
-      });
+      })
+      .finally(() => setCenaLoading(false));
   }, [kod, selectedBarvaId, produkt]);
 
   if (loading) return <DetailSkeleton />;
@@ -251,7 +254,7 @@ export default function ProduktDetailPage({
           </div>
 
           {/* Doporučená cena */}
-          {hasCeny && (
+          {hasCeny ? (
             <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
               <div className="px-5 py-4" style={{ background: "var(--primary-50)" }}>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
@@ -273,9 +276,22 @@ export default function ProduktDetailPage({
                     : `od ${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`}
                 </p>
                 <p className="text-xs" style={{ color: "var(--muted-light)" }}>
-                  Při větším množství nabízíme slevu — kontaktujte nás pro individuální nabídku.
+                  Cena za samotný produkt bez potisku/výšivky. Finální cenu včetně
+                  zdobení a množstevní slevy vám potvrdíme v nezávazné nabídce.
                 </p>
               </div>
+            </div>
+          ) : cenaLoading ? (
+            <div className="rounded-xl px-5 py-4 animate-pulse" style={{ border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>Načítám cenu…</p>
+            </div>
+          ) : (
+            <div className="rounded-xl px-5 py-4" style={{ border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              <p className="text-sm font-semibold">Cena na dotaz</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                Cenu se nepodařilo načíst. Přidejte produkt do poptávky, nebo se
+                zeptejte v chatu — cenu vám rádi spočítáme.
+              </p>
             </div>
           )}
 
