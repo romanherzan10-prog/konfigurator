@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "LOOOKU — reklamní textil na míru",
+  title: "LOOOKU — výšivka, potisk, reklamní textil a merch",
   description:
-    "Katalog reklamního textilu s potiskem i výšivkou. Trička, mikiny, bundy, čepice, tašky. Návrh potisku online, rychlá kalkulace a poptávka.",
+    "Výšivka, potisk, reklamní textil, firemní merch i reklamní předměty na míru. Trička, mikiny, bundy, čepice, tašky. Návrh online, cena hned, rychlé dodání.",
 };
 
 export default function RootLayout({

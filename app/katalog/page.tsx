@@ -127,6 +127,13 @@ export default function KatalogPage() {
   const [sortBy, setSortBy] = useState("nazev");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [zdroj, setZdroj] = useState<"textil" | "merch">("textil");
+
+  // Deep-link z landing page (?zdroj=merch) — čteme až po hydrataci, ať se neliší od SSR HTML.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("zdroj") === "merch") {
+      setZdroj("merch");
+    }
+  }, []);
   const [topProdukty, setTopProdukty] = useState<Kurace[]>([]);
   const [kuraceMap, setKuraceMap] = useState<Record<string, Kurace>>({});
 

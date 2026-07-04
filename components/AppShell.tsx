@@ -12,6 +12,7 @@ import {
   Sparkles,
   Phone,
   Mail,
+  Home,
 } from "lucide-react";
 import { loadCart } from "@/lib/cart";
 import ChatAssistant from "@/components/ChatAssistant";
@@ -25,7 +26,8 @@ import ChatAssistant from "@/components/ChatAssistant";
  */
 
 const MENU = [
-  { href: "/", label: "Katalog", icon: LayoutGrid },
+  { href: "/", label: "Domů", icon: Home },
+  { href: "/katalog", label: "Katalog", icon: LayoutGrid },
   { href: "/konfigurator", label: "Košík / poptávka", icon: ShoppingBag },
   { href: "/ucet", label: "Moje zakázky", icon: Package },
   { href: "/ucet", label: "Přihlásit se", icon: User },
