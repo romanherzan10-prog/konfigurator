@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import {
   Menu,
   X,
@@ -37,6 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  // Landing „Ateliér“ je tmavá → hlavička na "/" přepne do tmavé varianty
+  const isLanding = usePathname() === "/";
+  const headerFg = isLanding ? "#f3ede1" : "var(--foreground)";
 
   useEffect(() => {
     const refresh = () => {
@@ -78,10 +82,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="sticky top-0 z-40"
         style={{
           height: 56,
-          background: "rgba(255,255,255,0.92)",
+          background: isLanding ? "rgba(23,19,16,0.86)" : "rgba(255,255,255,0.92)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--border)",
+          borderBottom: isLanding
+            ? "1px solid rgba(243,237,225,0.12)"
+            : "1px solid var(--border)",
         }}
       >
         <div className="h-full flex items-center justify-between px-3 sm:px-5">
@@ -90,13 +96,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setMenuOpen(true)}
               aria-label="Otevřít menu"
               className="w-10 h-10 flex items-center justify-center rounded-lg transition-colors"
-              style={{ color: "var(--foreground)" }}
+              style={{ color: headerFg }}
             >
               <Menu className="w-5 h-5" />
             </button>
             <a href="/" className="flex items-center gap-2">
               <span className="logo-mark" style={{ width: 30, height: 30, fontSize: 13 }}>L</span>
-              <span className="font-bold tracking-tight" style={{ color: "var(--foreground)", letterSpacing: "0.5px" }}>
+              <span className="font-bold tracking-tight" style={{ color: headerFg, letterSpacing: "0.5px" }}>
                 LOOOKU
               </span>
             </a>
@@ -107,7 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/konfigurator"
               aria-label="Košík"
               className="relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors"
-              style={{ color: "var(--foreground)" }}
+              style={{ color: headerFg }}
             >
               <ShoppingBag className="w-5 h-5" />
               {cartCount > 0 && (
@@ -123,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/ucet"
               aria-label="Účet"
               className="w-10 h-10 flex items-center justify-center rounded-lg transition-colors"
-              style={{ color: "var(--foreground)" }}
+              style={{ color: headerFg }}
             >
               <User className="w-5 h-5" />
             </a>

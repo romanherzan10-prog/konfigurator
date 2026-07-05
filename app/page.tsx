@@ -1,20 +1,27 @@
-import { Hero } from "@/components/landing/Hero";
-import { ServicesGrid } from "@/components/landing/ServicesGrid";
-import { PromoItemsShowcase } from "@/components/landing/PromoItemsShowcase";
-import { FinalCta } from "@/components/landing/FinalCta";
+import { Fraunces, Archivo } from "next/font/google";
+import { LandingV2 } from "@/components/landing/LandingV2";
 
 /**
- * Hlavní strana = úvodní "výkladní skříň" (výšivka, potisk, reklamní textil,
- * merch, reklamní předměty), proklik do katalogu/konfigurátoru.
- * Katalog samotný žije na /katalog.
+ * Hlavní strana = one-page „Ateliér“ (výšivka, potisk, reklamní textil, merch,
+ * reklamní předměty) s proklikem do konfigurátoru/katalogu.
+ * Fonty jsou scopované jen na landing (zbytek webu jede dál na Interu).
  */
+
+const fraunces = Fraunces({
+  subsets: ["latin", "latin-ext"],
+  style: ["normal", "italic"],
+  variable: "--font-fraunces",
+});
+
+const archivo = Archivo({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-archivo",
+});
+
 export default function Home() {
   return (
-    <>
-      <Hero />
-      <ServicesGrid />
-      <PromoItemsShowcase />
-      <FinalCta />
-    </>
+    <div className={`${fraunces.variable} ${archivo.variable}`}>
+      <LandingV2 />
+    </div>
   );
 }
