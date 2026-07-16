@@ -102,33 +102,78 @@ export async function POST(req: NextRequest) {
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
 
+  // Sanitizace při přehrávání historie: starší řádky mohly uložit tool_calls /
+  // tool_results bez pole "type" (nebo prázdné bloky) — Anthropic API pak celý
+  // request odmítne chybou `content.0.type: Field required` a konverzace umře
+  // přesně ve chvíli finalizace poptávky. Každý blok proto normalizujeme a
+  // nevalidní/prázdné zprávy raději vynecháme, než abychom shodili celý chat.
   const messages: MessageParam[] = [];
   for (const row of historyRows ?? []) {
     if (row.role === "user") {
-      messages.push({ role: "user", content: row.content ?? "" });
+      if (typeof row.content === "string" && row.content.trim()) {
+        messages.push({ role: "user", content: row.content });
+      }
     } else if (row.role === "assistant") {
-      // Pokud obsahuje tool_calls, musíme rekonstruovat content blocks
       if (row.tool_calls) {
         const blocks: ContentBlock[] = [];
         if (row.content) {
           blocks.push({ type: "text", text: row.content, citations: [] });
         }
-        for (const tc of row.tool_calls as ToolUseBlock[]) {
-          blocks.push(tc);
+        for (const tc of (row.tool_calls as Partial<ToolUseBlock>[]) ?? []) {
+          if (!tc || typeof tc !== "object" || !tc.id || !tc.name) continue;
+          blocks.push({
+            type: "tool_use",
+            id: tc.id,
+            name: tc.name,
+            input: tc.input ?? {},
+          } as ToolUseBlock);
         }
+        const toolUseIds = new Set(
+          blocks.filter((b) => b.type === "tool_use").map((b) => (b as ToolUseBlock).id)
+        );
+        if (blocks.length === 0) continue;
         messages.push({ role: "assistant", content: blocks });
-        // Přidej tool_result zprávu — MUSÍ to být validní tool_result bloky
-        // (type:"tool_result", tool_use_id, content), jinak Anthropic API tah odmítne.
-        if (row.tool_results) {
-          messages.push({
-            role: "user",
-            content: row.tool_results as unknown as MessageParam["content"],
-          });
+
+        // tool_result bloky: doplň chybějící "type", zahoď bloky bez tool_use_id
+        // nebo bez odpovídajícího tool_use v předchozí zprávě.
+        if (toolUseIds.size > 0 && Array.isArray(row.tool_results)) {
+          const results = (row.tool_results as Array<Record<string, unknown>>)
+            .filter((tr) => tr && typeof tr === "object" && typeof tr.tool_use_id === "string")
+            .filter((tr) => toolUseIds.has(tr.tool_use_id as string))
+            .map((tr) => ({
+              type: "tool_result" as const,
+              tool_use_id: tr.tool_use_id as string,
+              content:
+                typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content ?? ""),
+              is_error: !!tr.is_error,
+            }));
+          if (results.length === toolUseIds.size) {
+            messages.push({ role: "user", content: results });
+          } else {
+            // Neúplné výsledky = API by request odmítlo („missing tool_result“).
+            // Radši odstraň i tool_use bloky a nech jen případný text.
+            messages.pop();
+            const textOnly = blocks.filter((b) => b.type === "text");
+            if (textOnly.length > 0) {
+              messages.push({ role: "assistant", content: textOnly });
+            }
+          }
+        } else if (toolUseIds.size > 0) {
+          // tool_use bez uložených výsledků → stejný problém, drž jen text
+          messages.pop();
+          const textOnly = blocks.filter((b) => b.type === "text");
+          if (textOnly.length > 0) {
+            messages.push({ role: "assistant", content: textOnly });
+          }
         }
-      } else {
-        messages.push({ role: "assistant", content: row.content ?? "" });
+      } else if (typeof row.content === "string" && row.content.trim()) {
+        messages.push({ role: "assistant", content: row.content });
       }
     }
+  }
+  // API vyžaduje, aby konverzace začínala user zprávou
+  while (messages.length > 0 && messages[0].role !== "user") {
+    messages.shift();
   }
 
   // 3) Přidej novou user zprávu
