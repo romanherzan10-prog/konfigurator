@@ -16,6 +16,7 @@ import type {
   MessageParam,
   ContentBlock,
   ToolUseBlock,
+  Message,
 } from "@anthropic-ai/sdk/resources/messages";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
@@ -30,11 +31,39 @@ export const maxDuration = 60;
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOKENS = 2048;
 const MAX_TOOL_ITERATIONS = 6; // safeguard proti infinite loopu
+const MAX_API_RETRIES = 4; // retry na transient chyby (Overloaded/429/5xx) — hlavní příčina "seká se"
 const FALLBACK_EMPTY_TEXT =
   "Pardon, něco se mi tady zaseklo a nemám pro vás odpověď. Zkuste to prosím napsat trochu jinak — nebo začněte nový chat tlačítkem nahoře.";
+const FALLBACK_OVERLOADED_TEXT =
+  "Omlouvám se, náš asistent má teď hodně dotazů najednou a chvíli mu to nejede. Zkuste prosím zprávu poslat ještě jednou za pár vteřin — nebo nám rovnou napište na loookucz@gmail.com / +420 739 165 191 a hned se vám ozveme.";
 
 // Rate limit per session: max 40 zpráv za sessionu
 const MAX_MESSAGES_PER_SESSION = 40;
+
+// Rozpozná dočasné chyby, které má smysl zopakovat (přetížení API, rate limit,
+// 5xx, výpadek sítě). Trvalé chyby (400 bad request, 401) neopakujeme.
+function isRetryableApiError(err: unknown): boolean {
+  const e = err as {
+    status?: number;
+    name?: string;
+    error?: { type?: string };
+    type?: string;
+  };
+  const status = e?.status;
+  const type = e?.error?.type ?? e?.type;
+  if (status === 429 || status === 408 || (status !== undefined && status >= 500)) return true;
+  if (
+    type === "overloaded_error" ||
+    type === "rate_limit_error" ||
+    type === "api_error" ||
+    type === "timeout_error"
+  )
+    return true;
+  if (e?.name === "APIConnectionError" || e?.name === "APIConnectionTimeoutError") return true;
+  return false;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ============================================================
 // POST /api/chat
@@ -187,7 +216,12 @@ export async function POST(req: NextRequest) {
   });
 
   // 5) Stream odpověď zpět uživateli
-  const anthropic = new Anthropic({ apiKey: anthropicKey });
+  // maxRetries: SDK samo zopakuje transient chyby i na úrovni requestu.
+  const anthropic = new Anthropic({
+    apiKey: anthropicKey,
+    maxRetries: MAX_API_RETRIES,
+    timeout: 45000,
+  });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -224,30 +258,59 @@ export async function POST(req: NextRequest) {
 
           // V poslední iteraci VYNUTÍME text odpověď (žádné další tooly),
           // jinak by Claude mohl skončit jen s tool_use a klient by viděl prázdnou bublinu.
-          const response = await anthropic.messages.stream({
-            model: MODEL,
-            max_tokens: MAX_TOKENS,
-            system: buildSystemPrompt(),
-            tools: CHAT_TOOLS,
-            tool_choice: isLastIteration ? { type: "none" } : { type: "auto" },
-            messages,
-          });
+          //
+          // Aplikační retry: pokud API vrátí dočasnou chybu (Overloaded/429/5xx)
+          // DŘÍV, než jsme cokoli streamovali, počkáme s exponenciálním backoffem
+          // a zkusíme znovu. Jakmile už tekl text ven, retry neděláme (nešlo by
+          // čistě navázat) a chybu vyhodíme do vnějšího catch s přátelskou hláškou.
+          let finalMessage: Message | null = null;
 
-          // Poslouchej text delty a posílej je jako SSE
-          for await (const event of response) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              const chunk = event.delta.text;
-              fullText += chunk;
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: "text", text: chunk })}\n\n`)
+          for (let attempt = 0; attempt <= MAX_API_RETRIES; attempt++) {
+            let streamedThisAttempt = false;
+            try {
+              const response = anthropic.messages.stream({
+                model: MODEL,
+                max_tokens: MAX_TOKENS,
+                system: buildSystemPrompt(),
+                tools: CHAT_TOOLS,
+                tool_choice: isLastIteration ? { type: "none" } : { type: "auto" },
+                messages,
+              });
+
+              for await (const event of response) {
+                if (
+                  event.type === "content_block_delta" &&
+                  event.delta.type === "text_delta"
+                ) {
+                  const chunk = event.delta.text;
+                  streamedThisAttempt = true;
+                  fullText += chunk;
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: "text", text: chunk })}\n\n`)
+                  );
+                }
+              }
+
+              finalMessage = await response.finalMessage();
+              break; // úspěch
+            } catch (streamErr) {
+              const canRetry =
+                !streamedThisAttempt &&
+                attempt < MAX_API_RETRIES &&
+                isRetryableApiError(streamErr);
+              if (!canRetry) throw streamErr;
+              // exponenciální backoff s jitterem (0.6s, 1.2s, 2.4s, 4.8s ± jitter)
+              const backoff = 600 * 2 ** attempt + Math.floor(Math.random() * 400);
+              console.warn(
+                `[/api/chat] transient API error, retry ${attempt + 1}/${MAX_API_RETRIES} za ${backoff}ms`
               );
+              await sleep(backoff);
             }
           }
 
-          const finalMessage = await response.finalMessage();
+          if (!finalMessage) {
+            throw new Error("Nepodařilo se získat odpověď z API ani po opakování.");
+          }
           totalInputTokens += finalMessage.usage.input_tokens;
           totalOutputTokens += finalMessage.usage.output_tokens;
 
@@ -404,18 +467,39 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[/api/chat] stream error:", msg);
+
+        // Přátelská hláška místo syrové chyby. Když už nějaký text tekl ven,
+        // připojíme jen krátký dovětek, ať nevznikne rozporuplná bublina.
+        const overloaded = isRetryableApiError(err);
+        const friendly = overloaded ? FALLBACK_OVERLOADED_TEXT : FALLBACK_EMPTY_TEXT;
+        const alreadyHasText = fullText.trim().length > 0;
+        const toSend = alreadyHasText ? `\n\n${friendly}` : friendly;
+        fullText += toSend;
+
         controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "error", error: msg })}\n\n`
-          )
+          encoder.encode(`data: ${JSON.stringify({ type: "text", text: toSend })}\n\n`)
+        );
+        // Konec streamu ať UI ukončí "přemýšlí" stav (ne error → žádná děsivá hláška).
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: "done", recovered: true })}\n\n`)
         );
 
-        // Zapiš event
-        await supabase.from("chat_events").insert({
-          session_id: sessionId,
-          event_type: "error",
-          payload: { error: msg },
-        });
+        // Ulož odpověď (i tu nouzovou), aby historie nebyla rozbitá a bublina prázdná.
+        try {
+          await supabase.from("chat_messages").insert({
+            session_id: sessionId,
+            role: "assistant",
+            content: fullText,
+            model: MODEL,
+          });
+          await supabase.from("chat_events").insert({
+            session_id: sessionId,
+            event_type: "error",
+            payload: { error: msg, overloaded },
+          });
+        } catch {
+          // DB zápis nesmí shodit odpověď uživateli
+        }
       } finally {
         clearInterval(heartbeat);
         controller.close();
