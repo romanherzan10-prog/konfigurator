@@ -292,6 +292,29 @@ export async function executeTool(
 // 1) search_products
 // ------------------------------------------------------------
 
+// Čeština nemá v 'simple' fulltextu stemming a názvy produktů kategorii
+// většinou neobsahují ("Kariban K 474" ≠ "mikina"). Když embedding selže/je
+// pomalý, bare dotaz jako "mikina" by nevrátil skoro nic. Proto z dotazu
+// odvodíme kategorii i bez embeddingu → zákazník vždy dostane reálné produkty.
+const KATEGORIE_KEYWORDS: Array<[RegExp, string]> = [
+  [/\b(mikin|hoodie|klokan|svetr|rolák|rolak)/i, "Mikiny & Svetry"],
+  [/\b(tričk|trick|triko|tílk|tilk|t-shirt|tshirt)/i, "Trička"],
+  [/\b(polokošil|polokosil|polo)/i, "Polokošile"],
+  [/\b(čepic|cepic|kšilt|ksilt|kulich|beanie|cap)/i, "Čepice & Kšiltovky"],
+  [/\b(tašk|tasce|batoh|vak|pytel|shopper|bag)/i, "Tašky & Batohy"],
+  [/\b(bund|vest|softshell|větrovk|vetrovk|parka)/i, "Bundy & Vesty"],
+  [/\b(košil|kosil|halenk|blůz|bluz)/i, "Košile & Halenky"],
+  [/\b(montérk|monterk|pracovní|pracovn|zástěr|zaster|hi-vis|reflexn)/i, "Pracovní oděvy"],
+  [/\b(ručník|rucnik|osušk|osusk|utěrk|uterk)/i, "Ručníky & Textil"],
+];
+
+function inferKategorie(query: string): string | null {
+  for (const [re, kat] of KATEGORIE_KEYWORDS) {
+    if (re.test(query)) return kat;
+  }
+  return null;
+}
+
 async function toolSearchProducts(input: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
   const query = String(input.query || "").trim();
@@ -307,10 +330,21 @@ async function toolSearchProducts(input: Record<string, unknown>) {
     }
   }
 
+  // Kategorii buď respektuj z filtru, nebo ji odvoď z dotazu.
+  const inferredKat = inferKategorie(query);
+  const filterKategorie =
+    (input.filter_kategorie as string | undefined) ?? inferredKat ?? null;
+
+  // Bez embeddingu 'simple' FTS neumí české skloňování ("mikina"≠"Mikiny"), takže
+  // bare kategorijní dotaz by nic nevrátil. Když jsme kategorii z dotazu odvodili
+  // a embedding nemáme, text vyprázdníme → o výběr se postará filtr kategorie
+  // (řazení dle skladu). S embeddingem necháme plný dotaz (sémantika to zvládne).
+  const queryForRpc = embedding || !inferredKat ? query : "";
+
   const { data, error } = await supabase.rpc("match_produkty", {
-    query_text: query,
+    query_text: queryForRpc,
     query_embedding: embedding as unknown as string | null, // pgvector v Supabase akceptuje string/array
-    filter_kategorie: input.filter_kategorie ?? null,
+    filter_kategorie: filterKategorie,
     filter_znacka: input.filter_znacka ?? null,
     filter_min_cena: input.filter_min_cena ?? null,
     filter_max_cena: input.filter_max_cena ?? null,
