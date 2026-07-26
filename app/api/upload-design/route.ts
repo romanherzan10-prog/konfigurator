@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { uploadToR2 } from "@/lib/r2";
 import { hashIp, extractIp } from "@/lib/chat/ip-hash";
+import {
+  rozpoznatTyp,
+  jeObrazek,
+  priponaProUlozeni,
+  POVOLENE_PRIPONY,
+} from "@/lib/upload-guard";
 
 /**
  * POST /api/upload-design
@@ -29,6 +35,7 @@ export async function POST(req: NextRequest) {
     nahled_base64?: string;
     logo_base64?: string;
     logo_typ?: string;
+    logo_nazev?: string;
   };
   try {
     body = await req.json();
@@ -49,32 +56,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Neplatný nebo příliš velký náhled." }, { status: 413 });
   }
 
+  // Náhled generuje customizer jako PNG — ověřujeme to z obsahu, ať se sem
+  // přes veřejnou routu nedá propašovat něco jiného.
+  const previewTyp = rozpoznatTyp(previewBuf);
+  if (!previewTyp || !jeObrazek(previewTyp)) {
+    return NextResponse.json({ error: "Náhled musí být obrázek." }, { status: 415 });
+  }
+
   const ts = Date.now();
   const safeKod = String(produkt_kod).replace(/[^a-zA-Z0-9._-]/g, "_");
 
   try {
     const nahledUrl = await uploadToR2(
-      `navrhy/${safeKod}_${ts}.png`,
+      `navrhy/${safeKod}_${ts}.${previewTyp.ext}`,
       previewBuf,
-      "image/png"
+      previewTyp.mime
     );
 
     let logoUrl: string | null = null;
     if (body.logo_base64) {
       const logoBuf = decodeDataUrl(body.logo_base64);
-      if (logoBuf.length > 0 && logoBuf.length <= MAX_BYTES) {
-        const typ = body.logo_typ ?? "image/png";
-        const ext = typ.includes("svg")
-          ? "svg"
-          : typ.includes("jpeg") || typ.includes("jpg")
-            ? "jpg"
-            : "png";
-        logoUrl = await uploadToR2(
-          `navrhy/loga/${safeKod}_${ts}.${ext}`,
-          logoBuf,
-          typ
+      if (logoBuf.length === 0 || logoBuf.length > MAX_BYTES) {
+        return NextResponse.json(
+          { error: "Logo je prázdné nebo příliš velké." },
+          { status: 413 }
         );
       }
+      // Dřív se věřilo `logo_typ` z těla requestu a SVG bylo výslovně povolené.
+      const logoTyp = rozpoznatTyp(logoBuf);
+      if (!logoTyp) {
+        return NextResponse.json(
+          { error: `Logo musí být ${POVOLENE_PRIPONY}.` },
+          { status: 415 }
+        );
+      }
+      logoUrl = await uploadToR2(
+        `navrhy/loga/${safeKod}_${ts}.${priponaProUlozeni(body.logo_nazev, logoTyp)}`,
+        logoBuf,
+        logoTyp.mime
+      );
     }
 
     const supabase = getSupabaseAdmin();

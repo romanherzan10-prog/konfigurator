@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadToR2 } from "@/lib/r2";
+import {
+  rozpoznatTyp,
+  bezpecnyNazev,
+  priponaProUlozeni,
+  POVOLENE_PRIPONY,
+} from "@/lib/upload-guard";
 
 /**
  * POST /api/upload-logo
  * Nahraje logo/grafiku z košíku (Podklady) do R2. Vrací veřejnou URL + název.
  * Tělo: { nazev: string, typ: string, data_base64: string }
+ *
+ * Routa je veřejná (zákazník nahrává podklady dřív, než má účet), takže typ
+ * souboru se určuje z obsahu, ne z toho, co pošle klient — viz lib/upload-guard.
  */
 
 export const runtime = "nodejs";
@@ -17,15 +26,6 @@ function decodeDataUrl(dataUrl: string): Buffer {
   return Buffer.from(base64, "base64");
 }
 
-function extFor(typ: string, nazev: string): string {
-  const fromName = nazev.includes(".") ? nazev.split(".").pop()!.toLowerCase() : "";
-  if (fromName && /^[a-z0-9]{1,5}$/.test(fromName)) return fromName;
-  if (typ.includes("svg")) return "svg";
-  if (typ.includes("pdf")) return "pdf";
-  if (typ.includes("jpeg") || typ.includes("jpg")) return "jpg";
-  return "png";
-}
-
 export async function POST(req: NextRequest) {
   let body: { nazev?: string; typ?: string; data_base64?: string };
   try {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Neplatné tělo požadavku." }, { status: 400 });
   }
 
-  const { nazev, typ, data_base64 } = body;
+  const { nazev, data_base64 } = body;
   if (!data_base64) {
     return NextResponse.json({ error: "Chybí soubor." }, { status: 400 });
   }
@@ -44,15 +44,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Neplatný nebo příliš velký soubor." }, { status: 413 });
   }
 
+  // Typ z magic bytes. Přípona z názvu ani hlavička od klienta se nepoužívají —
+  // dřív šlo přejmenováním nahrát cokoliv.
+  const typ = rozpoznatTyp(buf);
+  if (!typ) {
+    return NextResponse.json(
+      { error: `Nepodporovaný formát souboru. Pošlete prosím ${POVOLENE_PRIPONY}.` },
+      { status: 415 }
+    );
+  }
+
   const ts = Date.now();
-  const safeName = (nazev || "logo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
-  const ext = extFor(typ ?? "", nazev ?? "");
+  const safeName = bezpecnyNazev(nazev, "logo");
+  const ext = priponaProUlozeni(nazev, typ);
 
   try {
     const url = await uploadToR2(
-      `poptavky/loga/${ts}_${safeName}`.replace(/\.[^.]*$/, "") + `.${ext}`,
+      `poptavky/loga/${ts}_${safeName}.${ext}`,
       buf,
-      typ || "application/octet-stream"
+      typ.mime
     );
     return NextResponse.json({ url, nazev: nazev ?? `logo.${ext}` });
   } catch (e) {
