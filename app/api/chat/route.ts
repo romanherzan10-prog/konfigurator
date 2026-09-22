@@ -40,6 +40,53 @@ const FALLBACK_OVERLOADED_TEXT =
 // Rate limit per session: max 40 zpráv za sessionu
 const MAX_MESSAGES_PER_SESSION = 40;
 
+// Denní strop útraty za API.
+//
+// PROČ: dosavadní limity (40 zpráv na konverzaci, 10 konverzací na IP za
+// hodinu) omezují jednoho návštěvníka, ale ne celkovou útratu — stačilo
+// střídat IP. Chatbot je veřejný a každá odpověď stojí peníze, takže bez
+// celkového stropu může jeden vytrvalý návštěvník vyčerpat měsíční rozpočet
+// dřív, než si toho kdokoliv všimne.
+//
+// Limit se počítá z reálně spotřebovaných tokenů dneška (chat_messages), ne
+// z odhadu. Sazby odpovídají použitému modelu; při změně MODEL je uprav.
+const LIMIT_KC_DENNE = Number(process.env.CHAT_DENNI_LIMIT_KC ?? 300);
+const KURZ_USD_CZK = 23;
+const CENA_VSTUP_USD_ZA_MILION = 3;
+const CENA_VYSTUP_USD_ZA_MILION = 15;
+
+/** Přibližná dnešní útrata za chatbota v Kč. */
+async function dnesniUtrataKc(
+  supabase: ReturnType<typeof getSupabaseAdmin>
+): Promise<number> {
+  const odPulnoci = new Date();
+  odPulnoci.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("input_tokens, output_tokens")
+    .eq("role", "assistant")
+    .gte("created_at", odPulnoci.toISOString());
+
+  // Když se dotaz nepovede, strop raději NEuplatníme — výpadek účtování nesmí
+  // shodit chat zákazníkovi. Chyba se ale musí objevit v logu.
+  if (error) {
+    console.error("[chat] nepodařilo se spočítat denní útratu:", error.message);
+    return 0;
+  }
+
+  let vstup = 0;
+  let vystup = 0;
+  for (const r of data ?? []) {
+    vstup += r.input_tokens ?? 0;
+    vystup += r.output_tokens ?? 0;
+  }
+  const usd =
+    (vstup / 1_000_000) * CENA_VSTUP_USD_ZA_MILION +
+    (vystup / 1_000_000) * CENA_VYSTUP_USD_ZA_MILION;
+  return usd * KURZ_USD_CZK;
+}
+
 // Rozpozná dočasné chyby, které má smysl zopakovat (přetížení API, rate limit,
 // 5xx, výpadek sítě). Trvalé chyby (400 bad request, 401) neopakujeme.
 function isRetryableApiError(err: unknown): boolean {
@@ -120,6 +167,19 @@ export async function POST(req: NextRequest) {
   if ((session.message_count ?? 0) >= MAX_MESSAGES_PER_SESSION) {
     return sseError(
       `Dosažen limit ${MAX_MESSAGES_PER_SESSION} zpráv v rámci jedné konverzace.`,
+      429
+    );
+  }
+
+  // Celkový denní strop — chrání rozpočet, ne jednotlivého návštěvníka.
+  // Hláška musí zákazníkovi nabídnout cestu dál, ne ho jen odmítnout.
+  const utrata = await dnesniUtrataKc(supabase);
+  if (utrata >= LIMIT_KC_DENNE) {
+    console.warn(
+      `[chat] denní limit vyčerpán: ${utrata.toFixed(0)} Kč z ${LIMIT_KC_DENNE} Kč`
+    );
+    return sseError(
+      "Náš asistent má pro dnešek plno. Napište nám prosím na loookucz@gmail.com nebo +420 739 165 191 — ozveme se obratem.",
       429
     );
   }
@@ -271,7 +331,22 @@ export async function POST(req: NextRequest) {
               const response = anthropic.messages.stream({
                 model: MODEL,
                 max_tokens: MAX_TOKENS,
-                system: buildSystemPrompt(),
+                // Prompt caching: system prompt (~10 tis. tokenů) i definice
+                // nástrojů jsou STATICKÉ a posílaly se znovu při každém volání
+                // — a to až šestkrát na jednu zprávu uživatele. Poměr
+                // vstup/výstup byl 103:1, takže se platilo skoro výhradně za
+                // opakované posílání téhož.
+                //
+                // Breakpoint na system bloku cachuje i `tools`, protože ty jsou
+                // v pořadí požadavku před ním. Cache žije 5 minut a každé
+                // další volání v rámci konverzace ji obnoví.
+                system: [
+                  {
+                    type: "text",
+                    text: buildSystemPrompt(),
+                    cache_control: { type: "ephemeral" },
+                  },
+                ],
                 tools: CHAT_TOOLS,
                 tool_choice: isLastIteration ? { type: "none" } : { type: "auto" },
                 messages,

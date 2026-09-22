@@ -10,6 +10,7 @@
 
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { sDph } from "@/lib/pricing";
 import { embedQuery } from "@/lib/chat/embed-query";
 
 // ============================================================
@@ -366,7 +367,12 @@ async function toolSearchProducts(input: Record<string, unknown>) {
       znacka: p.znacka,
       kategorie: p.kategorie,
       gsm: p.gsm ? `${p.gsm} g/m²` : null,
-      cena_od: p.cena_od ? `od ${p.cena_od} Kč vč. DPH (při 1000+ ks)` : null,
+      // `cena_od` z katalogu je BEZ DPH (retail = nákupní cena × 2).
+      // Chatbot mluví se zákazníkem v cenách s DPH, takže se musí převést —
+      // jinak slibuje o 21 % méně, než na co je katalog i konfigurátor připraví.
+      cena_od: p.cena_od
+        ? `od ${sDph(Number(p.cena_od))} Kč vč. DPH (při 1000+ ks)`
+        : null,
       material: p.material,
       barev: p.barvy_pocet,
       velikosti: (p.velikosti_skladem as string[] | null)?.join(", "),
@@ -404,12 +410,14 @@ async function toolGetProductDetail(input: Record<string, unknown>) {
     material: p.material,
     popis: p.popis,
     poznamka_ceny: "Ceny jsou orientační prodejní VČETNĚ DPH za kus. Uváděj je vždy jako 'vč. DPH'.",
+    // Všechna pásma jsou v katalogu BEZ DPH — převádíme, protože je
+    // chatbot zákazníkovi podává jako ceny s DPH.
     ceny: {
-      "1 ks": p.cena_1ks ? `${p.cena_1ks} Kč` : null,
-      "10 ks": p.cena_10ks ? `${p.cena_10ks} Kč` : null,
-      "100 ks": p.cena_100ks ? `${p.cena_100ks} Kč` : null,
-      "500 ks": p.cena_500ks ? `${p.cena_500ks} Kč` : null,
-      "1000 ks": p.cena_1000ks ? `${p.cena_1000ks} Kč` : null,
+      "1 ks": p.cena_1ks ? `${sDph(Number(p.cena_1ks))} Kč` : null,
+      "10 ks": p.cena_10ks ? `${sDph(Number(p.cena_10ks))} Kč` : null,
+      "100 ks": p.cena_100ks ? `${sDph(Number(p.cena_100ks))} Kč` : null,
+      "500 ks": p.cena_500ks ? `${sDph(Number(p.cena_500ks))} Kč` : null,
+      "1000 ks": p.cena_1000ks ? `${sDph(Number(p.cena_1000ks))} Kč` : null,
     },
     barvy: p.barvy,
     barvy_pocet: p.barvy_pocet,
@@ -676,7 +684,8 @@ async function toolZobrazProdukty(input: Record<string, unknown>) {
       produkty.push({
         kod: String(p.kod),
         nazev: String(p.nazev),
-        cena: p.cena_od != null ? `od ${Math.round(Number(p.cena_od))} Kč vč. DPH` : null,
+        // Textil: katalogová cena je bez DPH → převést.
+        cena: p.cena_od != null ? `od ${sDph(Number(p.cena_od))} Kč vč. DPH` : null,
         obrazek_url: (p.obrazek_url as string) ?? null,
         url: `/katalog/${encodeURIComponent(String(p.kod))}`,
       });
@@ -693,6 +702,8 @@ async function toolZobrazProdukty(input: Record<string, unknown>) {
       produkty.push({
         kod: String(p.kod),
         nazev: String(p.nazev),
+        // Merch (Printify) má ceny s DPH už v databázi — NEpřevádět,
+        // jinak by se DPH připočetlo podruhé.
         cena: p.min_cena != null ? `od ${Math.round(Number(p.min_cena))} Kč vč. DPH` : null,
         obrazek_url: (p.obrazek_url as string) ?? null,
         url: `/merch/${encodeURIComponent(String(p.kod))}`,
