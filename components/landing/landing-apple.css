@@ -1,0 +1,278 @@
+/* ─────────────────────────────────────────────────────────
+   LOOOKU — Apple střih pro hlavní stranu.
+
+   Vše je pod `.ap-root`, takže se globální design system webu
+   (violet tokeny v globals.css) nemění ani o píď. Barvy jsou
+   Apple neutrály — jediná barevná věc na stránce je LOOOKU
+   fialová, a právě proto je vidět.
+   ───────────────────────────────────────────────────────── */
+
+.ap-root {
+  --ap-black:      #000000;
+  --ap-ink:        #1d1d1f;
+  --ap-paper:      #f5f5f7;
+  --ap-white:      #ffffff;
+  --ap-grey:       #6e6e73;  /* sekundární text na světlém */
+  --ap-grey-dark:  #a1a1a6;  /* sekundární text na černém  */
+  --ap-accent:     #8B5CF6;  /* LOOOKU */
+  --ap-hairline:   rgba(0, 0, 0, 0.08);
+
+  font-family: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  background: var(--ap-white);
+  color: var(--ap-ink);
+  /* Hlavička AppShellu je 56 px a sticky — hero ji podtéká. */
+  margin-top: -56px;
+}
+
+/* ── Typografie ──────────────────────────────────────────
+   Apple stojí na jednom písmu a na TĚSNÉM prokladu. Čím větší
+   stupeň, tím zápornější tracking — bez toho velké nadpisy
+   působí rozsypaně.                                          */
+
+.ap-h1 {
+  font-size: clamp(2.5rem, 5.4vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.042em;
+  font-weight: 700;
+  margin: 0;
+}
+.ap-h1-dim { color: var(--ap-grey-dark); }
+
+.ap-h2 {
+  font-size: clamp(2rem, 5.2vw, 3.6rem);
+  line-height: 1.06;
+  letter-spacing: -0.032em;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  max-width: 16ch;
+}
+.ap-center { max-width: none; text-align: center; margin-inline: auto; }
+
+.ap-eyebrow {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+
+.ap-lead {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.45;
+  letter-spacing: -0.012em;
+  color: var(--ap-grey-dark);
+  max-width: 34ch;
+  margin: 1.4rem 0 0;
+}
+.ap-center.ap-lead, .ap-lead.ap-center { margin-inline: auto; text-align: center; }
+
+.ap-body {
+  font-size: clamp(1rem, 1.5vw, 1.12rem);
+  line-height: 1.5;
+  letter-spacing: -0.008em;
+  max-width: 40ch;
+  margin: 0 0 1.6rem;
+}
+
+/* ── Tlačítka a odkazy ─────────────────────────────────── */
+.ap-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 50px;
+  padding: 0 1.75rem;
+  border-radius: 980px;              /* Apple pilulka */
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 180ms ease, background 180ms ease;
+}
+.ap-pill:hover { transform: scale(1.035); }
+.ap-pill[data-tone="primary"]:hover { background: #7C3AED !important; }
+.ap-pill[data-tone="ghost"]:hover   { opacity: 0.68; }
+.ap-pill:focus-visible {
+  outline: 2px solid var(--ap-accent);
+  outline-offset: 3px;
+}
+
+.ap-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ap-accent);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.ap-arrow svg { transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ap-arrow:hover svg { transform: translateX(4px); }
+.ap-arrow:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 4px; border-radius: 4px; }
+
+.ap-cta-row { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2.2rem; }
+.ap-center-row { justify-content: center; }
+
+/* ── HERO ────────────────────────────────────────────────
+   Světlé, ne tmavé. Všechny produktové mockupy z katalogu mají
+   bílé pozadí — na černé by se kolem nich rýsoval obdélník
+   a žádné stínování to nezachrání. Apple ostatně produktové
+   stránky dělá taky převážně na světlé.
+
+   Dvousloupec drží hero ve výšce okna; skládaná varianta
+   (text nad obrázkem) přerostla přes dva tisíce pixelů.        */
+.ap-hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 7rem 1.5rem 3rem;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 60% at 78% 45%, rgba(139, 92, 246, 0.10) 0%, transparent 64%),
+    var(--ap-white);
+}
+.ap-hero-grid {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+}
+.ap-hero-inner { position: relative; z-index: 2; }
+.ap-hero .ap-lead { color: var(--ap-grey); }
+.ap-hero .ap-h1-dim { color: var(--ap-grey-dark); }
+.ap-hero-img { position: relative; z-index: 1; }
+.ap-hero-img img {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 30px 50px rgba(0, 0, 0, 0.18));
+}
+
+/* ── ČÍSLA ───────────────────────────────────────────── */
+.ap-stats {
+  background: var(--ap-black);
+  color: var(--ap-paper);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  padding: clamp(4rem, 9vw, 7rem) 1.5rem;
+  text-align: center;
+}
+.ap-stat-n {
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  margin: 0;
+  line-height: 1;
+}
+.ap-stat-l {
+  font-size: 0.95rem;
+  color: var(--ap-grey-dark);
+  margin: 0.6rem 0 0;
+  letter-spacing: -0.005em;
+}
+
+/* ── PANELY ──────────────────────────────────────────── */
+.ap-panel { padding: clamp(5rem, 11vw, 9rem) 1.5rem; }
+.ap-panel + .ap-panel { border-top: 1px solid var(--ap-hairline); }
+.ap-panel-grid {
+  max-width: 1120px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2.5rem, 6vw, 5rem);
+  align-items: center;
+}
+.ap-panel-grid[data-flip="1"] .ap-panel-copy { order: 2; }
+.ap-panel-grid[data-flip="1"] .ap-panel-img  { order: 1; }
+
+.ap-tile {
+  border-radius: 24px;
+  padding: clamp(1.5rem, 3vw, 2.75rem);
+  background: transparent;
+}
+/* V tmavé sekci dostane produkt vlastní světlou plochu. */
+.ap-tile[data-dark="1"] {
+  background: var(--ap-paper);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+}
+.ap-panel-img img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+}
+.ap-tile:not([data-dark="1"]) img {
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.16));
+}
+
+/* ── TŘI KROKY ───────────────────────────────────────── */
+.ap-steps {
+  /* Bílá, ne šedá: předchozí panel je také --ap-paper a hrana mezi nimi
+     by zmizela. Takhle rytmus světla a tmy drží až do konce stránky. */
+  background: var(--ap-white);
+  color: var(--ap-ink);
+  padding: clamp(5rem, 11vw, 9rem) 1.5rem;
+}
+.ap-steps-grid {
+  max-width: 1120px;
+  margin: clamp(2.5rem, 6vw, 4rem) auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+}
+.ap-step-n {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ap-accent);
+  margin: 0 0 0.9rem;
+}
+.ap-step-t {
+  font-size: clamp(1.25rem, 2.2vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  margin: 0 0 0.6rem;
+}
+.ap-step-d { color: var(--ap-grey); margin-bottom: 0; }
+.ap-step { border-top: 1px solid var(--ap-hairline); padding-top: 1.6rem; }
+
+/* ── ZÁVĚR ───────────────────────────────────────────── */
+.ap-final {
+  background: var(--ap-black);
+  color: var(--ap-paper);
+  padding: clamp(5.5rem, 12vw, 10rem) 1.5rem;
+  text-align: center;
+}
+.ap-contact {
+  margin: 2.6rem 0 0;
+  font-size: 0.98rem;
+  color: var(--ap-grey-dark);
+}
+.ap-contact a { color: var(--ap-paper); text-decoration: none; }
+.ap-contact a:hover { color: var(--ap-accent); }
+.ap-dot { margin: 0 0.6rem; opacity: 0.5; }
+
+/* ── Mobil ───────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .ap-panel-grid { grid-template-columns: 1fr; }
+  .ap-panel-grid[data-flip="1"] .ap-panel-copy,
+  .ap-panel-grid[data-flip="1"] .ap-panel-img { order: initial; }
+  .ap-steps-grid { grid-template-columns: 1fr; }
+  .ap-stats { grid-template-columns: 1fr; gap: 2.5rem; }
+  .ap-hero { min-height: auto; padding-top: 6.5rem; padding-bottom: 3rem; }
+  .ap-hero-grid { grid-template-columns: 1fr; }
+  .ap-hero-img { max-width: 380px; margin-inline: auto; }
+  .ap-lead { max-width: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-pill:hover { transform: none; }
+  .ap-arrow:hover svg { transform: none; }
+}
