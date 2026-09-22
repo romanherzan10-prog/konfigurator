@@ -35,13 +35,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Neplatná session" }, { status: 401 });
   }
 
+  // E-mail se porovnává bez ohledu na velikost písmen (zákazník ho ve formuláři
+  // napíše jakkoliv), ale `%` a `_` se MUSÍ escapovat — jinak není e-mail
+  // hodnota, ale LIKE vzor. `_` zastupuje libovolný znak, takže dvě adresy
+  // lišící se jedním písmenem by na sebe viděly; adresa s `%` by vrátila
+  // poptávky cizích zákazníků. Čteme přes service_role, takže RLS to nechytí.
+  const emailVzor = user.email.replace(/[\\%_]/g, (znak) => `\\${znak}`);
+
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from("poptavky")
     .select(
       "id, created_at, typ_produktu, typ_zpracovani, mnozstvi, stav, odhadovana_cena_celkem, logo_soubor_url, dalsi_info"
     )
-    .ilike("email", user.email)
+    .ilike("email", emailVzor)
     .order("created_at", { ascending: false });
 
   if (error) {
