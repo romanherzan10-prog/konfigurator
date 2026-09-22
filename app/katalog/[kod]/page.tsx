@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { use } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { sDph } from "@/lib/pricing";
 
 interface SkladItem {
   id: string;
@@ -51,23 +53,15 @@ function formatKc(val: number | null | undefined): string {
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
-      <div className="h-4 rounded w-48 mb-8" style={{ background: "var(--surface-2)" }} />
-      <div className="flex flex-col lg:flex-row gap-10">
-        <div className="lg:w-1/2">
-          <div className="aspect-square rounded-xl" style={{ background: "var(--surface-2)" }} />
+    <div className="ap-pd">
+      <div className="ap-pd-grid">
+        <div className="ap-pd-media">
+          <div className="ap-pd-stage ap-pd-price-skeleton" style={{ width: "100%", height: "auto" }} />
         </div>
-        <div className="lg:w-1/2 space-y-4">
-          <div className="h-8 rounded w-3/4" style={{ background: "var(--surface-2)" }} />
-          <div className="h-4 rounded w-1/3" style={{ background: "var(--surface-2)" }} />
-          <div className="h-4 rounded w-1/2" style={{ background: "var(--surface-2)" }} />
-          <div className="h-20 rounded" style={{ background: "var(--surface-2)" }} />
-          <div className="flex gap-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="w-8 h-8 rounded-full" style={{ background: "var(--surface-2)" }} />
-            ))}
-          </div>
-          <div className="h-40 rounded" style={{ background: "var(--surface-2)" }} />
+        <div>
+          <div className="ap-pd-price-skeleton" style={{ width: "70%", height: "2.6rem" }} />
+          <div className="ap-pd-price-skeleton" style={{ width: "40%", height: "1rem", marginTop: "1rem" }} />
+          <div className="ap-pd-price-skeleton" style={{ width: "55%", height: "2.2rem", marginTop: "2rem" }} />
         </div>
       </div>
     </div>
@@ -158,18 +152,18 @@ export default function ProduktDetailPage({
 
   if (notFound || !produkt) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-24 text-center">
-        <div className="text-5xl mb-4">🔍</div>
-        <h1 className="text-2xl font-bold mb-2">Produkt nenalezen</h1>
-        <p className="mb-6" style={{ color: "var(--muted)" }}>
-          Produkt s kódem &quot;{kod}&quot; nebyl nalezen v katalogu.
+      <div className="ap-pd-empty">
+        <h1 className="ap-h2 ap-center">Produkt nenalezen.</h1>
+        <p className="ap-lead ap-center">
+          Kód „{kod}“ v katalogu nemáme. Možná se přejmenoval, nebo ho
+          dodavatel stáhl z nabídky.
         </p>
-        <a
-          href="/katalog"
-          className="inline-flex items-center px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Zpět na katalog
-        </a>
+        <div className="ap-cta-row ap-center-row">
+          <Link href="/katalog" className="ap-pill" data-tone="primary"
+             style={{ background: "var(--ap-accent)", color: "#fff" }}>
+            Zpět do katalogu
+          </Link>
+        </div>
       </div>
     );
   }
@@ -183,58 +177,56 @@ export default function ProduktDetailPage({
   const hasCeny = cenaOd != null;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
-      <nav className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-        <a href="/katalog" className="hover:text-primary transition-colors">
-          Katalog
-        </a>
-        <span className="mx-2">/</span>
-        <span style={{ color: "var(--foreground)" }}>{produkt.nazev}</span>
+    <div className="ap-pd">
+      <nav className="ap-crumbs" aria-label="Drobečková navigace">
+        <Link href="/katalog">Katalog</Link>
+        <span aria-hidden>/</span>
+        <strong>{produkt.nazev}</strong>
       </nav>
 
-      <div className="flex flex-col lg:flex-row gap-10 lg:items-start">
-        {/* Obrázek vlevo — na desktopu sticky */}
-        <div className="lg:w-1/2 lg:sticky lg:top-24 lg:self-start w-full">
-          <div
-            className="aspect-square rounded-2xl flex items-center justify-center overflow-hidden"
-            style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
-          >
+      <div className="ap-pd-grid">
+        {/* ── Obrázek (na desktopu lepivý) ── */}
+        <div className="ap-pd-media">
+          <div className="ap-pd-stage">
             {bigImage ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={bigImage}
-                alt={selectedBarva ? `${produkt.nazev} - ${selectedBarva.nazev}` : produkt.nazev}
-                className="w-full h-full object-contain p-6"
+                alt={
+                  selectedBarva
+                    ? `${produkt.nazev} — ${selectedBarva.nazev}`
+                    : produkt.nazev
+                }
               />
             ) : (
-              <span className="text-8xl opacity-20">👕</span>
+              <span className="ap-pd-stage-empty" aria-hidden>
+                👕
+              </span>
             )}
           </div>
-          {/* Náhledové dlaždice — produkt + mockup fotky s logem */}
+
           {galerie.length > 1 && (
-            <div className="flex gap-2 flex-wrap mt-3">
+            <div className="ap-pd-thumbs">
               {galerie.map((src, i) => {
                 const aktivni = src === bigImage;
                 const jeMockup = mockupy.includes(src);
                 return (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => setActiveImg(src)}
-                    className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0"
-                    style={{
-                      border: `2px solid ${aktivni ? "var(--primary)" : "var(--border)"}`,
-                      background: "var(--surface-2)",
-                    }}
+                    className="ap-pd-thumb"
+                    data-active={aktivni ? "1" : undefined}
+                    aria-label={
+                      jeMockup
+                        ? "Ukázka s logem"
+                        : `Náhled ${i + 1}`
+                    }
+                    aria-pressed={aktivni}
                   >
-                    <img src={src} alt="" className="w-full h-full object-contain p-1" />
-                    {jeMockup && (
-                      <span
-                        className="absolute bottom-0 inset-x-0 text-[8px] font-bold text-center py-0.5"
-                        style={{ background: "var(--primary)", color: "#fff" }}
-                      >
-                        UKÁZKA
-                      </span>
-                    )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" />
+                    {jeMockup && <span className="ap-pd-thumb-tag">UKÁZKA</span>}
                   </button>
                 );
               })}
@@ -242,110 +234,68 @@ export default function ProduktDetailPage({
           )}
         </div>
 
-        {/* Info vpravo */}
-        <div className="lg:w-1/2 space-y-5">
-          <div>
-            <h1 className="text-2xl font-bold mb-1">{produkt.nazev}</h1>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--muted)" }}>
-              {produkt.znacka && <span>{produkt.znacka.nazev}</span>}
-              <span style={{ color: "var(--muted-light)" }}>·</span>
-              <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: "var(--surface-2)" }}>{produkt.kod}</span>
-            </div>
-          </div>
+        {/* ── Údaje ── */}
+        <div>
+          <h1 className="ap-pd-title">{produkt.nazev}</h1>
+          <p className="ap-pd-meta">
+            {produkt.znacka && <span>{produkt.znacka.nazev}</span>}
+            <span className="ap-pd-code">{produkt.kod}</span>
+          </p>
 
-          {/* Doporučená cena */}
-          {hasCeny ? (
-            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-              <div className="px-5 py-4" style={{ background: "var(--primary-50)" }}>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
-                  Doporučená cena
-                </p>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-bold text-primary tabular-nums">
+          {/* ── Cena ── */}
+          <div className="ap-pd-price">
+            <p className="ap-pd-price-label">Doporučená cena</p>
+            {hasCeny ? (
+              <>
+                <div className="ap-pd-price-row">
+                  <span className="ap-pd-price-big">
                     {cenaOd === cenaDo || cenaDo == null
                       ? formatKc(cenaOd)
                       : `od ${formatKc(cenaOd)}`}
                   </span>
-                  <span className="text-sm" style={{ color: "var(--muted-light)" }}>bez DPH / ks</span>
+                  <span className="ap-pd-price-unit">bez DPH / ks</span>
                 </div>
-              </div>
-              <div className="px-5 py-2.5 space-y-1" style={{ background: "var(--surface-2)", borderTop: "1px solid var(--border)" }}>
-                <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  {cenaOd === cenaDo || cenaDo == null
-                    ? `${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`
-                    : `od ${Math.round(cenaOd! * 1.21).toLocaleString("cs-CZ")} Kč s DPH`}
+                <p className="ap-pd-price-vat">
+                  {cenaOd === cenaDo || cenaDo == null ? "" : "od "}
+                  {sDph(cenaOd!).toLocaleString("cs-CZ")} Kč s DPH
                 </p>
-                <p className="text-xs" style={{ color: "var(--muted-light)" }}>
-                  Cena za samotný produkt bez potisku/výšivky. Finální cenu včetně
-                  zdobení a množstevní slevy vám potvrdíme v nezávazné nabídce.
+                <p className="ap-pd-price-note">
+                  Cena za samotný produkt bez potisku a výšivky. Finální cenu
+                  včetně zdobení a množstevní slevy potvrdíme v nezávazné nabídce.
                 </p>
-              </div>
-            </div>
-          ) : cenaLoading ? (
-            <div className="rounded-xl px-5 py-4 animate-pulse" style={{ border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>Načítám cenu…</p>
-            </div>
-          ) : (
-            <div className="rounded-xl px-5 py-4" style={{ border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              <p className="text-sm font-semibold">Cena na dotaz</p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                Cenu se nepodařilo načíst. Přidejte produkt do poptávky, nebo se
-                zeptejte v chatu — cenu vám rádi spočítáme.
-              </p>
-            </div>
-          )}
-
-          {/* Parametry */}
-          <div className="text-sm space-y-1" style={{ color: "var(--muted)" }}>
-            {produkt.material && (
-              <p>
-                <span className="font-medium" style={{ color: "var(--foreground)" }}>Materiál:</span>{" "}
-                {produkt.material}
-              </p>
-            )}
-            {produkt.gramaz && (
-              <p>
-                <span className="font-medium" style={{ color: "var(--foreground)" }}>Gramáž:</span>{" "}
-                {produkt.gramaz} g/m²
-              </p>
-            )}
-            {produkt.hmotnost_g && (
-              <p>
-                <span className="font-medium" style={{ color: "var(--foreground)" }}>Hmotnost:</span>{" "}
-                {produkt.hmotnost_g} g
-              </p>
-            )}
-            {produkt.kategorie && (
-              <p>
-                <span className="font-medium" style={{ color: "var(--foreground)" }}>Kategorie:</span>{" "}
-                {produkt.kategorie.nazev}
-              </p>
+              </>
+            ) : cenaLoading ? (
+              <div className="ap-pd-price-skeleton" />
+            ) : (
+              <>
+                <div className="ap-pd-price-row">
+                  <span className="ap-pd-price-big">Cena na dotaz</span>
+                </div>
+                <p className="ap-pd-price-note">
+                  Cenu se teď nepodařilo načíst. Přidejte produkt do poptávky
+                  nebo se zeptejte v chatu — rádi ji spočítáme.
+                </p>
+              </>
             )}
           </div>
 
-          {produkt.popis && (
-            <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>{produkt.popis}</p>
-          )}
-
-          {/* Výběr barvy */}
+          {/* ── Barva ── */}
           {produkt.barvy && produkt.barvy.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-2">
-                Barva:{" "}
-                <span className="font-normal" style={{ color: "var(--muted)" }}>{selectedBarva?.nazev || "---"}</span>
-              </h3>
-              <div className="flex flex-wrap gap-2">
+            <div className="ap-pd-block">
+              <h2 className="ap-pd-block-h">
+                Barva: <em>{selectedBarva?.nazev || "—"}</em>
+              </h2>
+              <div className="ap-pd-swatches">
                 {produkt.barvy.map((b) => (
                   <button
                     key={b.id}
                     type="button"
                     title={b.nazev}
+                    aria-label={b.nazev}
+                    aria-pressed={selectedBarvaId === b.id}
                     onClick={() => setSelectedBarvaId(b.id)}
-                    className={`w-8 h-8 rounded-full border-2 transition-all cursor-pointer ${
-                      selectedBarvaId === b.id
-                        ? "border-primary ring-2 ring-primary/30 scale-110"
-                        : "border-[var(--border)] hover:border-[var(--muted-light)]"
-                    }`}
+                    className="ap-pd-swatch"
+                    data-active={selectedBarvaId === b.id ? "1" : undefined}
                     style={{ backgroundColor: b.hex_kod || "#ccc" }}
                   />
                 ))}
@@ -353,70 +303,99 @@ export default function ProduktDetailPage({
             </div>
           )}
 
-          {/* Tabulka velikostí + sklad */}
+          {/* ── Dostupnost ── */}
           {skladItems.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Dostupné velikosti</h3>
-              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: "var(--surface-2)" }}>
-                      <th className="text-left px-4 py-2 font-medium" style={{ color: "var(--foreground)" }}>Velikost</th>
-                      <th className="text-right px-4 py-2 font-medium" style={{ color: "var(--foreground)" }}>Skladem</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {skladItems.map((s) => (
-                      <tr
-                        key={s.id}
-                        style={{ borderTop: "1px solid var(--border)", color: s.skladem === 0 ? "var(--muted-light)" : undefined }}
-                      >
-                        <td className="px-4 py-2 font-medium">{s.velikost}</td>
-                        <td className="px-4 py-2 text-right">
-                          <span className="inline-flex items-center gap-1.5 justify-end">
-                            <span className={`w-2 h-2 rounded-full ${s.skladem > 0 ? "bg-green-500" : "bg-red-400"}`} />
-                            {s.skladem > 0 ? `${s.skladem} ks` : "Není skladem"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="ap-pd-block">
+              <h2 className="ap-pd-block-h">Dostupné velikosti</h2>
+              <dl className="ap-pd-specs">
+                {skladItems.map((sk) => (
+                  <div
+                    key={sk.id}
+                    className="ap-pd-spec"
+                    data-out={sk.skladem === 0 ? "1" : undefined}
+                  >
+                    <dt>{sk.velikost}</dt>
+                    <dd>
+                      <span
+                        className="ap-pd-dot"
+                        data-in={sk.skladem > 0 ? "1" : "0"}
+                        aria-hidden
+                      />
+                      {sk.skladem > 0 ? `${sk.skladem} ks` : "Není skladem"}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           )}
 
           {selectedBarva && skladItems.length === 0 && (
-            <p className="text-sm" style={{ color: "var(--muted-light)" }}>Informace o dostupnosti nejsou k dispozici.</p>
+            <p className="ap-pd-desc">
+              Informace o dostupnosti u téhle barvy nemáme.
+            </p>
           )}
 
-          {/* CTA */}
-          <div className="flex flex-wrap gap-3 pt-1">
-            <a
+          {/* ── Parametry ── */}
+          {(produkt.material ||
+            produkt.gramaz ||
+            produkt.hmotnost_g ||
+            produkt.kategorie) && (
+            <div className="ap-pd-block">
+              <h2 className="ap-pd-block-h">Parametry</h2>
+              <dl className="ap-pd-specs">
+                {produkt.material && (
+                  <div className="ap-pd-spec">
+                    <dt>Materiál</dt>
+                    <dd>{produkt.material}</dd>
+                  </div>
+                )}
+                {produkt.gramaz && (
+                  <div className="ap-pd-spec">
+                    <dt>Gramáž</dt>
+                    <dd>{produkt.gramaz} g/m²</dd>
+                  </div>
+                )}
+                {produkt.hmotnost_g && (
+                  <div className="ap-pd-spec">
+                    <dt>Hmotnost</dt>
+                    <dd>{produkt.hmotnost_g} g</dd>
+                  </div>
+                )}
+                {produkt.kategorie && (
+                  <div className="ap-pd-spec">
+                    <dt>Kategorie</dt>
+                    <dd>{produkt.kategorie.nazev}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+
+          {produkt.popis && <p className="ap-pd-desc">{produkt.popis}</p>}
+
+          {/* ── Akce ── */}
+          <div className="ap-cta-row">
+            <Link
               href={`/navrhnout/${encodeURIComponent(produkt.kod)}`}
-              className="inline-flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-colors text-white"
-              style={{ background: "var(--primary)" }}
+              className="ap-pill"
+              data-tone="primary"
+              style={{ background: "var(--ap-accent)", color: "#fff" }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" /><circle cx="11" cy="11" r="2" />
-              </svg>
               Navrhnout potisk
-            </a>
-            <a
+            </Link>
+            <Link
               href={`/konfigurator?produkt=${encodeURIComponent(produkt.kod)}&nazev=${encodeURIComponent(produkt.nazev)}&cena=${cenaOd ?? 0}${selectedBarva ? `&barva=${encodeURIComponent(selectedBarva.nazev)}` : ""}${produkt.kategorie ? `&kategorie=${encodeURIComponent(produkt.kategorie.nazev)}` : ""}`}
-              className="inline-flex items-center gap-2 px-6 py-3 font-medium rounded-lg transition-colors"
-              style={{ background: "var(--surface)", color: "var(--foreground)", border: "1.5px solid var(--border)" }}
+              className="ap-pill"
+              data-tone="ghost"
+              style={{ border: "1px solid currentColor" }}
             >
               Přidat do košíku
-            </a>
+            </Link>
           </div>
-          <a
-            href="/katalog"
-            className="inline-flex items-center gap-2 text-sm font-medium mt-1"
-            style={{ color: "var(--muted)" }}
-          >
+
+          <Link href="/katalog" className="ap-pd-back">
             ← Zpět do katalogu
-          </a>
+          </Link>
         </div>
       </div>
     </div>

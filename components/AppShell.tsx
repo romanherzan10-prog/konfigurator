@@ -38,9 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
-  // Landing „Ateliér“ je tmavá → hlavička na "/" přepne do tmavé varianty
+  // Landing je ve světlém Apple střihu → hlavička jede všude stejně světlá.
   const isLanding = usePathname() === "/";
-  const headerFg = isLanding ? "#f3ede1" : "var(--foreground)";
+  const headerFg = "var(--foreground)";
 
   useEffect(() => {
     const refresh = () => {
@@ -82,11 +82,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="sticky top-0 z-40"
         style={{
           height: 56,
-          background: isLanding ? "rgba(23,19,16,0.86)" : "rgba(255,255,255,0.92)",
+          background: "rgba(255,255,255,0.80)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
           borderBottom: isLanding
-            ? "1px solid rgba(243,237,225,0.12)"
+            ? "1px solid rgba(0,0,0,0.06)"
             : "1px solid var(--border)",
         }}
       >

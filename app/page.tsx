@@ -1,27 +1,19 @@
-import { Fraunces, Archivo } from "next/font/google";
-import { LandingV2 } from "@/components/landing/LandingV2";
+import { instrument } from "@/app/fonts";
+import { LandingApple } from "@/components/landing/LandingApple";
+import "@/components/apple/apple-base.css";
+import "@/components/landing/landing-apple.css";
 
 /**
- * Hlavní strana = one-page „Ateliér“ (výšivka, potisk, reklamní textil, merch,
- * reklamní předměty) s proklikem do konfigurátoru/katalogu.
- * Fonty jsou scopované jen na landing (zbytek webu jede dál na Interu).
+ * Hlavní strana — Apple střih: jedno písmo, monochromní plátno,
+ * produkt v hlavní roli, LOOOKU fialová jako jediný barevný akcent.
+ *
+ * Předchozí verze „Ateliér" zůstává v components/landing/LandingV2.tsx —
+ * návrat je záměna importu a komponenty níž.
  */
-
-const fraunces = Fraunces({
-  subsets: ["latin", "latin-ext"],
-  style: ["normal", "italic"],
-  variable: "--font-fraunces",
-});
-
-const archivo = Archivo({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-archivo",
-});
-
 export default function Home() {
   return (
-    <div className={`${fraunces.variable} ${archivo.variable}`}>
-      <LandingV2 />
+    <div className={instrument.variable}>
+      <LandingApple />
     </div>
   );
 }

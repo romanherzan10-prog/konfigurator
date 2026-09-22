@@ -1,0 +1,137 @@
+/* ─────────────────────────────────────────────────────────
+   LOOOKU — společný základ Apple střihu.
+
+   Tokeny a primitiva, která sdílí landing i detail produktu.
+   Vše pod `.ap-root`, takže globální violet design system webu
+   zůstává nedotčený a zbytek katalogu jede dál beze změny.
+
+   Barvy jsou Apple neutrály; jediná barevná věc je LOOOKU
+   fialová — a právě proto je vidět.
+   ───────────────────────────────────────────────────────── */
+
+.ap-root {
+  --ap-black:      #000000;
+  --ap-ink:        #1d1d1f;
+  --ap-paper:      #f5f5f7;
+  --ap-white:      #ffffff;
+  --ap-grey:       #6e6e73;  /* sekundární text na světlém */
+  --ap-grey-dark:  #a1a1a6;  /* sekundární text na černém  */
+  --ap-accent:     #8B5CF6;  /* LOOOKU */
+  --ap-hairline:   rgba(0, 0, 0, 0.09);
+
+  font-family: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  background: var(--ap-white);
+  color: var(--ap-ink);
+}
+
+/* ── Typografie ──────────────────────────────────────────
+   Čím větší stupeň, tím zápornější tracking — bez toho velké
+   nadpisy působí rozsypaně.                                  */
+
+.ap-h1 {
+  font-size: clamp(2.5rem, 5.4vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.042em;
+  font-weight: 700;
+  margin: 0;
+}
+.ap-h1-dim { color: var(--ap-grey-dark); }
+
+.ap-h2 {
+  font-size: clamp(2rem, 5.2vw, 3.6rem);
+  line-height: 1.06;
+  letter-spacing: -0.032em;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  max-width: 16ch;
+}
+.ap-center { max-width: none; text-align: center; margin-inline: auto; }
+
+.ap-eyebrow {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+
+.ap-lead {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.45;
+  letter-spacing: -0.012em;
+  color: var(--ap-grey-dark);
+  max-width: 34ch;
+  margin: 1.4rem 0 0;
+}
+.ap-center.ap-lead, .ap-lead.ap-center { margin-inline: auto; text-align: center; }
+
+.ap-body {
+  font-size: clamp(1rem, 1.5vw, 1.12rem);
+  line-height: 1.5;
+  letter-spacing: -0.008em;
+  max-width: 40ch;
+  margin: 0 0 1.6rem;
+}
+
+/* ── Tlačítka a odkazy ─────────────────────────────────── */
+.ap-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 50px;
+  padding: 0 1.75rem;
+  border-radius: 980px;              /* Apple pilulka */
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 180ms ease, background 180ms ease;
+}
+.ap-pill:hover { transform: scale(1.035); }
+.ap-pill[data-tone="primary"]:hover { background: #7C3AED !important; }
+.ap-pill[data-tone="ghost"]:hover   { opacity: 0.68; }
+.ap-pill:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 3px; }
+
+.ap-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ap-accent);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.ap-arrow svg { transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+.ap-arrow:hover svg { transform: translateX(4px); }
+.ap-arrow:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 4px; border-radius: 4px; }
+
+.ap-cta-row { display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 2.2rem; }
+.ap-center-row { justify-content: center; }
+
+/* ── Dlaždice pod produktem ──────────────────────────────
+   Mockupy z katalogu mají bílé pozadí. V tmavé sekci by se
+   kolem nich rýsoval obdélník, proto dostanou vlastní světlou
+   plochu — pak to působí záměrně, ne rozbitě.                */
+.ap-tile {
+  border-radius: 24px;
+  padding: clamp(1.5rem, 3vw, 2.75rem);
+  background: transparent;
+}
+.ap-tile[data-dark="1"] {
+  background: var(--ap-paper);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+}
+.ap-tile img { width: 100%; height: auto; display: block; border-radius: 14px; }
+.ap-tile:not([data-dark="1"]) img {
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.16));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-pill:hover { transform: none; }
+  .ap-arrow:hover svg { transform: none; }
+}
