@@ -160,6 +160,7 @@ export const CHAT_TOOLS: Tool[] = [
         email: { type: "string" },
         telefon: { type: "string" },
         firma: { type: "string", description: "Nepovinné — název firmy." },
+        ico: { type: "string", description: "Nepovinné — IČO firmy (8 číslic)." },
         souhrn: {
           type: "string",
           description:
@@ -577,6 +578,12 @@ async function toolSubmitInquiry(
     .filter(Boolean)
     .join("\n\n");
 
+  // Firma/IČO i do vlastních sloupců (ERP podle IČO páruje zákazníka).
+  // Neplatné IČO poptávku neshodí — jen se neuloží.
+  const firma = String(input.firma ?? "").trim().slice(0, 200) || null;
+  const icoCislice = String(input.ico ?? "").replace(/\D/g, "");
+  const ico = /^\d{6,8}$/.test(icoCislice) ? icoCislice.padStart(8, "0") : null;
+
   const { data: inquiry, error } = await supabase
     .from("poptavky")
     .insert({
@@ -584,6 +591,8 @@ async function toolSubmitInquiry(
       prijmeni: input.prijmeni ?? "",
       email: input.email,
       telefon: input.telefon ?? "",
+      firma,
+      ico,
       typ_produktu: typProduktu,
       typ_zpracovani: typZpracovani,
       mnozstvi: totalMnozstvi,

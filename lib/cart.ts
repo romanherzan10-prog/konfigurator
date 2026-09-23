@@ -1,4 +1,11 @@
 import type { ProductType, ServiceType, LogoPlacement } from "./pricing";
+import {
+  prazdnyRozpis,
+  rozpisDoTextu,
+  slucRozpis,
+  type JinaVelikost,
+  type Rozpis,
+} from "./velikosti";
 
 // "textil" = konfigurovatelný textil s cenotvorbou (calculateEstimate);
 // "merch" = hotový produkt z Printify s fixní cenou za variantu.
@@ -23,6 +30,9 @@ export interface CartItem {
   // Merch (Printify) — fixní cena za kus, varianta barva/velikost
   merchUnitCena?: number | null; // CZK vč. DPH
   merchVelikost?: string | null;
+  // Rozpis velikostí textilu (nepovinný). Staré košíky pole nemají → prázdný rozpis.
+  rozpis?: Rozpis | null; // mřížka XS–3XL
+  dalsiVelikosti?: string | null; // volný text „4XL 2, dětské 128: 5"
 }
 
 // Je položka merch? (kind, nebo PF- kód ze starých košíků / customizeru)
@@ -33,6 +43,70 @@ export function isMerch(item: CartItem): boolean {
 // Cena řádku merch (vč. DPH) = fixní cena × množství.
 export function merchLineTotal(item: CartItem): number {
   return Math.round((item.merchUnitCena ?? item.catalogCena ?? 0) * item.quantity);
+}
+
+// ── Počet kusů a rozpis velikostí (textil) ──────────────────────────
+// Ručně zadaný počet kusů textilu drží rozmezí MIN–MAX. Jakmile má položka
+// rozpis velikostí, počet kusů = součet velikostí (může být i pod minimem —
+// zákazník dostane jen upozornění).
+
+export const MIN_KS_TEXTIL = 5;
+export const MAX_KS_TEXTIL = 5000;
+
+/** Má položka rozpis velikostí? Merch má vlastní variantu, čepice a tašky velikosti nemají. */
+export function maVelikosti(item: CartItem): boolean {
+  return !isMerch(item) && item.productType !== "cepice" && item.productType !== "taska";
+}
+
+export interface RozpisPolozky {
+  /** Mřížka + standardní velikosti napsané do „Další velikosti". */
+  rozpis: Rozpis;
+  /** Velikosti mimo mřížku (4XL, 128, 5/6 …) z „Další velikosti". */
+  jine: JinaVelikost[];
+  celkem: number;
+  /**
+   * Text z „Další velikosti", který není velikostí s počtem („dámský střih",
+   * „doplníme později") — jinak null. Posílá se dál, nesmí se ztratit.
+   */
+  nerozpoznano: string | null;
+}
+
+export function rozpisPolozky(item: CartItem): RozpisPolozky {
+  if (!maVelikosti(item)) return { rozpis: prazdnyRozpis(), jine: [], celkem: 0, nerozpoznano: null };
+  // slucRozpis bere z localStorage jen celá nezáporná čísla a „S 5" napsané
+  // do dalších velikostí přičte do mřížky.
+  const s = slucRozpis(item.rozpis, item.dalsiVelikosti);
+  return { rozpis: s.rozpis, jine: s.jine, celkem: s.celkem, nerozpoznano: s.zbytek || null };
+}
+
+/** Počet kusů pro cenu i poptávku: součet velikostí, když je rozpis vyplněný, jinak zadaný počet. */
+export function efektivniMnozstvi(item: CartItem): number {
+  const soucet = rozpisPolozky(item).celkem;
+  return soucet > 0 ? soucet : item.quantity;
+}
+
+/**
+ * Srovná `quantity` s rozpisem (volat po každé změně textilní položky):
+ * s rozpisem = součet velikostí, bez něj zůstane poslední počet (v rozmezí 5–5000).
+ */
+export function srovnejMnozstvi(item: CartItem): CartItem {
+  if (isMerch(item)) return item;
+  const soucet = rozpisPolozky(item).celkem;
+  const rucne = Math.round(Number(item.quantity)) || MIN_KS_TEXTIL;
+  const quantity = soucet > 0 ? soucet : Math.min(MAX_KS_TEXTIL, Math.max(MIN_KS_TEXTIL, rucne));
+  return quantity === item.quantity ? item : { ...item, quantity };
+}
+
+/**
+ * Hodnota `poptavka_polozky.velikost`: merch = zvolená varianta, textil = rozpis
+ * „S:2, M:5, 4XL:1" (čte ho ERP přes parseRozpis). Text z „Další velikosti",
+ * který není velikostí („dámský střih"), se připojí za „; " — ať se nic neztratí.
+ */
+export function velikostDoPoptavky(item: CartItem): string | null {
+  if (isMerch(item)) return item.merchVelikost ?? null;
+  const r = rozpisPolozky(item);
+  const casti = [rozpisDoTextu(r.rozpis, r.jine), r.nerozpoznano].filter(Boolean);
+  return casti.length > 0 ? casti.join("; ") : null;
 }
 
 const STORAGE_KEY = "loooku_cart";

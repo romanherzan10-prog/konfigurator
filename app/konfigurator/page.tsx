@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   LOCATION_OPTIONS,
@@ -11,7 +12,6 @@ import {
   formatPrice,
   type ProductType,
   type ServiceType,
-  type LogoSize,
   type LogoPlacement,
   type KonfiguratorNastaveni,
   type Estimate,
@@ -27,7 +27,149 @@ import {
   createEmptyCartItem,
   isMerch,
   merchLineTotal,
+  maVelikosti,
+  rozpisPolozky,
+  efektivniMnozstvi,
+  srovnejMnozstvi,
+  velikostDoPoptavky,
+  MIN_KS_TEXTIL,
+  MAX_KS_TEXTIL,
 } from "@/lib/cart";
+import {
+  VELIKOSTI,
+  VELIKOST_LABEL,
+  parseRozpis,
+  formatRozpis,
+  rozpisDoTextu,
+  prazdnyRozpis,
+  soucetRozpisu,
+  type VelikostKlic,
+} from "@/lib/velikosti";
+
+/** Odhad ceny textilní položky (katalogová cena přepíše cenu typu produktu). */
+function odhadTextilu(item: CartItem, config: KonfiguratorNastaveni): Estimate {
+  const eff = item.catalogCena
+    ? { ...config, [`cena_${item.productType}`]: item.catalogCena }
+    : config;
+  return calculateEstimate(
+    item.productType,
+    item.serviceType,
+    efektivniMnozstvi(item),
+    item.serviceType === "clean" ? [] : item.placements,
+    eff as KonfiguratorNastaveni
+  );
+}
+
+/* ─── Kontakt zapamatovaný na tomto zařízení (jen localStorage) ─── */
+
+const KONTAKT_KEY = "loooku_kontakt";
+
+interface UlozenyKontakt {
+  jmeno: string;
+  prijmeni: string;
+  email: string;
+  telefon: string;
+  firma: string;
+  ico: string;
+}
+
+function nactiKontakt(): UlozenyKontakt | null {
+  try {
+    const raw = localStorage.getItem(KONTAKT_KEY);
+    if (!raw) return null;
+    const d: unknown = JSON.parse(raw);
+    if (!d || typeof d !== "object") return null;
+    const o = d as Record<string, unknown>;
+    const s = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+    return {
+      jmeno: s(o.jmeno, 100),
+      prijmeni: s(o.prijmeni, 100),
+      email: s(o.email, 200),
+      telefon: s(o.telefon, 50),
+      firma: s(o.firma, 200),
+      ico: s(o.ico, 20),
+    };
+  } catch {
+    return null; // nedostupné úložiště (soukromý režim) nebo poškozený záznam
+  }
+}
+
+function ulozKontakt(k: UlozenyKontakt) {
+  try {
+    localStorage.setItem(KONTAKT_KEY, JSON.stringify(k));
+  } catch {
+    /* úložiště nedostupné — nevadí, jen si údaje nezapamatujeme */
+  }
+}
+
+function zapomenKontakt() {
+  try {
+    localStorage.removeItem(KONTAKT_KEY);
+  } catch {
+    /* úložiště nedostupné — není co mazat */
+  }
+}
+
+/* ─── Počet kusů: volné psaní, potvrzení Enterem nebo opuštěním pole ── */
+
+function QtyInput({
+  id,
+  ariaLabel,
+  value,
+  min,
+  max,
+  onCommit,
+  readOnly = false,
+  className,
+}: {
+  id?: string;
+  ariaLabel?: string;
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (quantity: number) => void;
+  readOnly?: boolean;
+  className: string;
+}) {
+  // Rozepsaný text (jen číslice); null = needituje se, pole ukazuje `value`.
+  // Rozmezí min–max se hlídá až při potvrzení — při psaní by z „30" bylo „50".
+  const [draft, setDraft] = useState<string | null>(null);
+
+  function commit() {
+    if (draft === null) return;
+    setDraft(null);
+    const n = Number.parseInt(draft, 10);
+    if (readOnly || Number.isNaN(n)) return; // prázdné pole → zůstane původní počet
+    const q = Math.min(max, Math.max(min, n));
+    if (q !== value) onCommit(q);
+  }
+
+  return (
+    <input
+      id={id}
+      aria-label={ariaLabel}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      readOnly={readOnly}
+      value={readOnly || draft === null ? String(value) : draft}
+      onChange={(e) => {
+        const cislice = e.target.value.replace(/\D/g, "");
+        if (cislice.length <= 5) setDraft(cislice);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          setDraft(null);
+        }
+      }}
+      className={className}
+    />
+  );
+}
 
 function defaultDeadline(): string {
   const d = new Date();
@@ -111,12 +253,12 @@ function MerchCartItemCard({
           >
             −
           </button>
-          <input
-            type="number"
+          <QtyInput
+            ariaLabel="Počet kusů"
+            value={item.quantity}
             min={1}
             max={500}
-            value={item.quantity}
-            onChange={(e) => setQty(Number(e.target.value))}
+            onCommit={setQty}
             className="w-12 text-center rounded-lg border border-gray-300 px-1 py-1 text-sm outline-none focus:border-primary"
           />
           <button
@@ -157,7 +299,6 @@ function MerchCartItemCard({
 
 function CartItemCard({
   item,
-  index,
   config,
   expanded,
   onToggle,
@@ -166,7 +307,6 @@ function CartItemCard({
   itemCount,
 }: {
   item: CartItem;
-  index: number;
   config: KonfiguratorNastaveni;
   expanded: boolean;
   onToggle: () => void;
@@ -191,15 +331,64 @@ function CartItemCard({
       calculateEstimate(
         item.productType,
         item.serviceType,
-        item.quantity,
+        efektivniMnozstvi(item),
         item.serviceType === "clean" ? [] : item.placements,
         effectiveConfig
       ),
     [item, effectiveConfig]
   );
 
+  // Rozpis velikostí (mřížka + „Další velikosti"). Když je vyplněný, počet kusů = jeho součet.
+  const velikostiPovoleny = maVelikosti(item);
+  const rozpisInfo = rozpisPolozky(item);
+  const soucetVelikosti = rozpisInfo.celkem;
+  const mnozstvi = soucetVelikosti > 0 ? soucetVelikosti : item.quantity;
+  const rozpisText = formatRozpis(rozpisInfo.rozpis, rozpisInfo.jine);
+  const dalsiText = (item.dalsiVelikosti ?? "").trim();
+  const dalsi = dalsiText ? parseRozpis(dalsiText) : null;
+  const [vlozeno, setVlozeno] = useState<{ ok: boolean; text: string } | null>(null);
+
   function update(patch: Partial<CartItem>) {
-    onChange({ ...item, ...patch });
+    // srovnejMnozstvi: s rozpisem velikostí je počet kusů jejich součet
+    onChange(srovnejMnozstvi({ ...item, ...patch }));
+  }
+
+  function nastavVelikost(k: VelikostKlic, hodnota: string) {
+    const cislice = hodnota.replace(/\D/g, "");
+    if (cislice.length > 4) return; // víc než 9 999 ks jedné velikosti nebereme
+    update({ rozpis: { ...prazdnyRozpis(), ...(item.rozpis ?? {}), [k]: Number(cislice) || 0 } });
+    setVlozeno(null);
+  }
+
+  function nastavDalsiVelikosti(text: string) {
+    update({ dalsiVelikosti: text || null });
+    setVlozeno(null);
+  }
+
+  // Ctrl+V rozpisu z e-mailu / Excelu do kteréhokoliv políčka velikostí
+  function vlozRozpis(e: React.ClipboardEvent<HTMLInputElement>, doMrizky: boolean) {
+    const text = e.clipboardData.getData("text/plain");
+    if (!text.trim() || /^\s*\d+\s*$/.test(text)) return; // obyčejné číslo → běžné vložení
+    const p = parseRozpis(text);
+    if (!p.rozpoznano) {
+      // Do čísla nepouštět zbytky textu („S-XL, 2x" → „2"); do „Další velikosti" ano.
+      if (doMrizky) {
+        e.preventDefault();
+        setVlozeno({ ok: false, text: "V textu jsme rozpis velikostí nenašli." });
+      }
+      return;
+    }
+    e.preventDefault();
+    const patch: Partial<CartItem> = {
+      dalsiVelikosti: rozpisDoTextu(prazdnyRozpis(), p.jine) || null,
+    };
+    // Mřížku přepíše jen text se standardními velikostmi — samotné „4XL 2" ji nesmaže.
+    if (soucetRozpisu(p.rozpis) > 0) patch.rozpis = p.rozpis;
+    update(patch);
+    // Text navíc (jména, poznámky) do rozpisu nepatří — ukážeme ho, ať ho
+    // zákazník případně napíše do „Další velikosti" nebo do poznámky.
+    const navic = p.zbytek ? ` Nepoužito: „${p.zbytek.slice(0, 80)}${p.zbytek.length > 80 ? "…" : ""}“.` : "";
+    setVlozeno({ ok: true, text: `Vloženo: ${formatRozpis(p.rozpis, p.jine)} (${p.celkem} ks).${navic}` });
   }
 
   function updatePlacement(idx: number, field: keyof LogoPlacement, value: string) {
@@ -252,7 +441,7 @@ function CartItemCard({
             )}
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            {item.quantity} ks · {serviceLabel}
+            {mnozstvi} ks{rozpisText && ` (${rozpisText})`} · {serviceLabel}
             {item.catalogBarva && ` · ${item.catalogBarva}`}
             {" · "}
             <span className="font-medium text-gray-700">{formatPrice(estimate.totalPriceWithDph)}</span>
@@ -318,26 +507,103 @@ function CartItemCard({
 
           {/* Množství */}
           <div>
-            <label className="block text-sm font-medium mb-2">Počet kusů</label>
+            <label htmlFor={`mnozstvi-${item.id}`} className="block text-sm font-medium mb-2">
+              Počet kusů
+            </label>
             <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={5}
-                max={500}
-                value={item.quantity}
-                onChange={(e) => update({ quantity: Math.max(5, Math.min(500, Number(e.target.value) || 5)) })}
-                className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+              <QtyInput
+                id={`mnozstvi-${item.id}`}
+                value={mnozstvi}
+                min={MIN_KS_TEXTIL}
+                max={MAX_KS_TEXTIL}
+                readOnly={soucetVelikosti > 0}
+                onCommit={(q) => update({ quantity: q })}
+                className={`w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none ${
+                  soucetVelikosti > 0
+                    ? "bg-gray-50 text-gray-600"
+                    : "focus:border-primary focus:ring-2 focus:ring-primary/20"
+                }`}
               />
-              <input
-                type="range"
-                min={5}
-                max={500}
-                value={item.quantity}
-                onChange={(e) => update({ quantity: Number(e.target.value) })}
-                className="flex-1 accent-[var(--primary)]"
-              />
+              {soucetVelikosti > 0 ? (
+                <span className="text-xs text-gray-500">součet velikostí</span>
+              ) : (
+                <input
+                  type="range"
+                  min={MIN_KS_TEXTIL}
+                  max={500}
+                  value={Math.min(500, item.quantity)}
+                  onChange={(e) => update({ quantity: Number(e.target.value) })}
+                  aria-label="Počet kusů"
+                  className="flex-1 min-w-0 accent-[var(--primary)]"
+                />
+              )}
             </div>
           </div>
+
+          {/* Rozpis velikostí — nepovinný; vyplněný určuje počet kusů */}
+          {velikostiPovoleny && (
+            <div role="group" aria-labelledby={`rozpis-${item.id}`}>
+              <p id={`rozpis-${item.id}`} className="text-sm font-medium mb-2">
+                Rozpis velikostí{" "}
+                <span className="font-normal text-gray-500">(nepovinné — můžete doplnit později)</span>
+              </p>
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                {VELIKOSTI.map((k) => {
+                  const pocet = Number(item.rozpis?.[k]) || 0;
+                  return (
+                    <label key={k} className="min-w-0">
+                      <span className="block text-center text-xs font-medium text-gray-500 mb-1">
+                        {VELIKOST_LABEL[k]}
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="0"
+                        aria-label={`Velikost ${VELIKOST_LABEL[k]}, počet kusů`}
+                        value={pocet > 0 ? String(pocet) : ""}
+                        onChange={(e) => nastavVelikost(k, e.target.value)}
+                        onPaste={(e) => vlozRozpis(e, true)}
+                        className="w-full min-w-0 rounded-lg border border-gray-300 px-1 py-1.5 text-center text-sm tabular-nums placeholder:text-gray-300 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+              <label className="block mt-3">
+                <span className="block text-xs font-medium text-gray-500 mb-1">Další velikosti</span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  maxLength={200}
+                  placeholder="4XL 2, dětské 128: 5"
+                  value={item.dalsiVelikosti ?? ""}
+                  onChange={(e) => nastavDalsiVelikosti(e.target.value)}
+                  onPaste={(e) => vlozRozpis(e, false)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                />
+              </label>
+              {dalsi && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {dalsi.rozpoznano
+                    ? `Rozpoznáno: ${formatRozpis(dalsi.rozpis, dalsi.jine)}` +
+                      (dalsi.zbytek ? ` · „${dalsi.zbytek}“ předáme jako poznámku` : "")
+                    : "Nerozpoznáno — předáme jako poznámku."}
+                </p>
+              )}
+              {vlozeno && (
+                <p className={`mt-2 text-xs font-medium ${vlozeno.ok ? "text-green-700" : "text-amber-700"}`}>
+                  {vlozeno.text}
+                </p>
+              )}
+              {soucetVelikosti > 0 && soucetVelikosti < MIN_KS_TEXTIL && (
+                <p className="mt-2 text-xs font-medium text-amber-700">Minimální odběr je 5 ks.</p>
+              )}
+              <p className="mt-2 text-xs text-gray-400">
+                Tip: rozpis můžete vložit z e-mailu nebo Excelu (Ctrl+V do libovolného políčka).
+              </p>
+            </div>
+          )}
 
           {/* Logo umístění */}
           {item.serviceType !== "clean" && (
@@ -417,7 +683,7 @@ function CartItemCard({
             )}
             <hr className="my-2 border-gray-200" />
             <div className="flex justify-between font-semibold">
-              <span>{item.quantity} ks × {formatPrice(estimate.unitPriceWithDph)}</span>
+              <span>{mnozstvi} ks × {formatPrice(estimate.unitPriceWithDph)}</span>
               <span className="text-primary">{formatPrice(estimate.totalPriceWithDph)}</span>
             </div>
           </div>
@@ -454,13 +720,19 @@ function HomeInner() {
   const [fileName, setFileName] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
-  const [placementNotes, setPlacementNotes] = useState("");
+  const [placementNotes] = useState("");
   const [additionalInfo, setAdditionalInfo] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [company, setCompany] = useState("");
+  const [ico, setIco] = useState("");
+  // Výchozí vypnuto: uložení údajů do prohlížeče má být volba zákazníka,
+  // ne předzaškrtnuté políčko.
+  const [rememberContact, setRememberContact] = useState(false);
+  const [contactPrefilled, setContactPrefilled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -492,6 +764,37 @@ function HomeInner() {
       setExpandedId(saved[saved.length - 1].id);
     }
   }, []);
+
+  // Kontakt zapamatovaný z minulé poptávky — doplní jen prázdná pole
+  useEffect(() => {
+    const k = nactiKontakt();
+    if (!k) return;
+    const dopln = (set: React.Dispatch<React.SetStateAction<string>>, hodnota: string) => {
+      if (hodnota) set((prev) => prev || hodnota);
+    };
+    dopln(setFirstName, k.jmeno);
+    dopln(setLastName, k.prijmeni);
+    dopln(setEmail, k.email);
+    dopln(setPhone, k.telefon);
+    dopln(setCompany, k.firma);
+    dopln(setIco, k.ico);
+    if (Object.values(k).some(Boolean)) {
+      setContactPrefilled(true);
+      // Zákazník si údaje uložit už jednou nechal → volbu držíme zapnutou.
+      setRememberContact(true);
+    }
+  }, []);
+
+  function forgetContact() {
+    zapomenKontakt();
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setPhone("");
+    setCompany("");
+    setIco("");
+    setContactPrefilled(false);
+  }
 
   // Detekce katalogového produktu z URL
   useEffect(() => {
@@ -563,19 +866,10 @@ function HomeInner() {
         totalItems += item.quantity;
         continue;
       }
-      const eff = item.catalogCena
-        ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
-        : activeConfig;
-      const est = calculateEstimate(
-        item.productType,
-        item.serviceType,
-        item.quantity,
-        item.serviceType === "clean" ? [] : item.placements,
-        eff as KonfiguratorNastaveni
-      );
+      const est = odhadTextilu(item, activeConfig);
       totalWithDph += est.totalPriceWithDph;
       totalWithoutDph += est.totalPrice;
-      totalItems += item.quantity;
+      totalItems += efektivniMnozstvi(item);
     }
 
     return { totalWithDph, totalWithoutDph, totalItems };
@@ -644,6 +938,26 @@ function HomeInner() {
       setError("Zadejte platnou e-mailovou adresu.");
       return;
     }
+    // IČO nepovinné; vyplněné = 6–8 číslic (starší kratší IČO doplníme nulami zleva)
+    const icoBezMezer = ico.replace(/\s+/g, "");
+    if (icoBezMezer && !/^\d{6,8}$/.test(icoBezMezer)) {
+      setError("IČO má 8 číslic.");
+      return;
+    }
+    const icoNorm = icoBezMezer ? icoBezMezer.padStart(8, "0") : null;
+    const firma = company.trim().slice(0, 200) || null;
+
+    // Databáze bere poptávku do 5 000 ks celkem (poptavky_mnozstvi_check) —
+    // větší zakázku řešíme osobně, ne chybou „violates check constraint".
+    const prilisMnoho = items.find(
+      (item) => !isMerch(item) && efektivniMnozstvi(item) > MAX_KS_TEXTIL
+    );
+    if (prilisMnoho || totals.totalItems > MAX_KS_TEXTIL) {
+      setError(
+        `Poptávka přes ${MAX_KS_TEXTIL.toLocaleString("cs-CZ")} ks se přes web nedá odeslat — ozvěte se nám prosím e-mailem nebo telefonem, nabídku připravíme individuálně.`
+      );
+      return;
+    }
 
     setSubmitting(true);
 
@@ -665,23 +979,14 @@ function HomeInner() {
           cena_celkem_s_dph: merchLineTotal(item),
         };
       }
-      const eff = item.catalogCena
-        ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
-        : activeConfig;
-      const est = calculateEstimate(
-        item.productType,
-        item.serviceType,
-        item.quantity,
-        item.serviceType === "clean" ? [] : item.placements,
-        eff as KonfiguratorNastaveni
-      );
+      const est = odhadTextilu(item, activeConfig);
       return {
         katalog_kod: item.catalogKod,
         katalog_nazev: item.catalogNazev,
         katalog_barva: item.catalogBarva,
         typ_produktu: item.productType,
         typ_zpracovani: item.serviceType,
-        mnozstvi: item.quantity,
+        mnozstvi: efektivniMnozstvi(item),
         logo_umisteni: item.serviceType === "clean" ? null : item.placements,
         nahled_url: item.nahledUrl ?? null,
         cena_ks_s_dph: est.unitPriceWithDph,
@@ -701,6 +1006,8 @@ function HomeInner() {
       prijmeni: lastName.trim(),
       email: email.trim(),
       telefon: phone.trim() || null,
+      firma,
+      ico: icoNorm,
       typ_produktu: items[0].productType,
       typ_zpracovani: items[0].serviceType,
       mnozstvi: totals.totalItems,
@@ -739,8 +1046,9 @@ function HomeInner() {
         kategorie: item.catalogKategorie,
         typ_zpracovani: d.typ_zpracovani,
         barva: item.catalogBarva,
-        velikost: item.merchVelikost ?? null,
-        mnozstvi: item.quantity,
+        // textil: rozpis „S:2, M:5, 4XL:1" (+ nerozpoznaný text za „; "), merch: varianta
+        velikost: velikostDoPoptavky(item),
+        mnozstvi: efektivniMnozstvi(item),
         cena_ks_s_dph: d.cena_ks_s_dph,
         cena_celkem_s_dph: d.cena_celkem_s_dph,
         logo_umisteni: isMerch(item) || item.serviceType === "clean" ? null : item.placements,
@@ -760,6 +1068,20 @@ function HomeInner() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ poptavka_id: poptavkaId }),
     }).catch(() => {});
+
+    // Kontakt si pamatuje jen tento prohlížeč; bez souhlasu uložený záznam smažeme
+    if (rememberContact) {
+      ulozKontakt({
+        jmeno: firstName.trim(),
+        prijmeni: lastName.trim(),
+        email: email.trim(),
+        telefon: phone.trim(),
+        firma: firma ?? "",
+        ico: icoNorm ?? "",
+      });
+    } else {
+      zapomenKontakt();
+    }
 
     clearCart();
     setSubmitted(true);
@@ -795,12 +1117,12 @@ function HomeInner() {
           >
             Nová poptávka
           </button>
-          <a
+          <Link
             href="/katalog"
             className="inline-flex items-center px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:border-gray-400 transition-colors"
           >
             Katalog
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -834,7 +1156,7 @@ function HomeInner() {
             </p>
 
             <div className="space-y-3">
-              {items.map((item, idx) =>
+              {items.map((item) =>
                 isMerch(item) ? (
                   <MerchCartItemCard
                     key={item.id}
@@ -847,7 +1169,6 @@ function HomeInner() {
                   <CartItemCard
                     key={item.id}
                     item={item}
-                    index={idx}
                     config={activeConfig}
                     expanded={expandedId === item.id}
                     onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
@@ -861,12 +1182,12 @@ function HomeInner() {
 
             {/* Přidat produkt */}
             <div className="flex flex-wrap gap-3 mt-4">
-              <a
+              <Link
                 href="/katalog"
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary text-sm font-medium hover:border-primary hover:bg-[var(--primary-50)] transition-all"
               >
                 📦 Přidat z katalogu
-              </a>
+              </Link>
               <button
                 type="button"
                 onClick={addGenericProduct}
@@ -935,6 +1256,18 @@ function HomeInner() {
           <section>
             <h2 className="text-lg font-semibold mb-1">4. Kontaktní údaje</h2>
             <p className="text-sm text-gray-500 mb-4">Kam vám máme poslat nabídku?</p>
+            {contactPrefilled && (
+              <p className="text-xs text-gray-500 -mt-2 mb-4">
+                Údaje jsme předvyplnili z minula ·{" "}
+                <button
+                  type="button"
+                  onClick={forgetContact}
+                  className="underline hover:text-gray-700 cursor-pointer"
+                >
+                  Zapomenout
+                </button>
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -942,6 +1275,7 @@ function HomeInner() {
                 </label>
                 <input
                   type="text"
+                  autoComplete="given-name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
@@ -953,6 +1287,7 @@ function HomeInner() {
                 </label>
                 <input
                   type="text"
+                  autoComplete="family-name"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
@@ -964,6 +1299,7 @@ function HomeInner() {
                 </label>
                 <input
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
@@ -973,12 +1309,45 @@ function HomeInner() {
                 <label className="block text-sm font-medium mb-1">Telefon</label>
                 <input
                   type="tel"
+                  autoComplete="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Firma / klub</label>
+                <input
+                  type="text"
+                  autoComplete="organization"
+                  maxLength={200}
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">IČO</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={12}
+                  value={ico}
+                  onChange={(e) => setIco(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                />
+              </div>
             </div>
+            <label className="mt-4 flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberContact}
+                onChange={(e) => setRememberContact(e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-[var(--primary)] cursor-pointer"
+              />
+              Zapamatovat mé údaje na tomto zařízení
+            </label>
           </section>
 
           {error && (
@@ -1008,15 +1377,7 @@ function HomeInner() {
                   {items.map((item) => {
                     const lineTotal = isMerch(item)
                       ? merchLineTotal(item)
-                      : calculateEstimate(
-                          item.productType,
-                          item.serviceType,
-                          item.quantity,
-                          item.serviceType === "clean" ? [] : item.placements,
-                          (item.catalogCena
-                            ? { ...activeConfig, [`cena_${item.productType}`]: item.catalogCena }
-                            : activeConfig) as KonfiguratorNastaveni
-                        ).totalPriceWithDph;
+                      : odhadTextilu(item, activeConfig).totalPriceWithDph;
                     return (
                       <div key={item.id} className="flex justify-between text-gray-500">
                         <span className="truncate mr-2">
@@ -1025,7 +1386,7 @@ function HomeInner() {
                               ? item.catalogNazev.slice(0, 20) + "…"
                               : item.catalogNazev
                             : getProductTypes(activeConfig)[item.productType].label}
-                          <span className="text-gray-400"> ×{item.quantity}</span>
+                          <span className="text-gray-400"> ×{efektivniMnozstvi(item)}</span>
                         </span>
                         <span className="font-medium text-gray-700 whitespace-nowrap">
                           {formatPrice(lineTotal)}
