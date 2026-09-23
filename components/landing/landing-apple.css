@@ -1,0 +1,152 @@
+/* ─────────────────────────────────────────────────────────
+   LOOOKU — hlavní strana, Apple střih.
+   Tokeny a primitiva jsou ve components/apple/apple-base.css;
+   tady zůstává jen to, co patří výhradně landingu.
+   ───────────────────────────────────────────────────────── */
+
+/* Hlavička AppShellu je 56 px a sticky — hero ji podtéká. */
+.ap-root { margin-top: -56px; }
+
+/* ── HERO ────────────────────────────────────────────────
+   Světlé, ne tmavé. Všechny produktové mockupy z katalogu mají
+   bílé pozadí — na černé by se kolem nich rýsoval obdélník
+   a žádné stínování to nezachrání. Apple ostatně produktové
+   stránky dělá taky převážně na světlé.
+
+   Dvousloupec drží hero ve výšce okna; skládaná varianta
+   (text nad obrázkem) přerostla přes dva tisíce pixelů.        */
+.ap-hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 7rem 1.5rem 3rem;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 60% at 78% 45%, rgba(139, 92, 246, 0.10) 0%, transparent 64%),
+    var(--ap-white);
+}
+.ap-hero-grid {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+}
+.ap-hero-inner { position: relative; z-index: 2; }
+.ap-hero .ap-lead { color: var(--ap-grey); }
+.ap-hero .ap-h1-dim { color: var(--ap-grey-dark); }
+.ap-hero-img { position: relative; z-index: 1; }
+.ap-hero-img img {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 30px 50px rgba(0, 0, 0, 0.18));
+}
+
+/* ── ČÍSLA ───────────────────────────────────────────── */
+.ap-stats {
+  background: var(--ap-black);
+  color: var(--ap-paper);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  padding: clamp(4rem, 9vw, 7rem) 1.5rem;
+  text-align: center;
+}
+.ap-stat-n {
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  margin: 0;
+  line-height: 1;
+}
+.ap-stat-l {
+  font-size: 0.95rem;
+  color: var(--ap-grey-dark);
+  margin: 0.6rem 0 0;
+  letter-spacing: -0.005em;
+}
+
+/* ── PANELY ──────────────────────────────────────────── */
+.ap-panel { padding: clamp(5rem, 11vw, 9rem) 1.5rem; }
+.ap-panel + .ap-panel { border-top: 1px solid var(--ap-hairline); }
+.ap-panel-grid {
+  max-width: 1120px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2.5rem, 6vw, 5rem);
+  align-items: center;
+}
+.ap-panel-grid[data-flip="1"] .ap-panel-copy { order: 2; }
+.ap-panel-grid[data-flip="1"] .ap-panel-img  { order: 1; }
+
+
+
+/* ── TŘI KROKY ───────────────────────────────────────── */
+.ap-steps {
+  /* Bílá, ne šedá: předchozí panel je také --ap-paper a hrana mezi nimi
+     by zmizela. Takhle rytmus světla a tmy drží až do konce stránky. */
+  background: var(--ap-white);
+  color: var(--ap-ink);
+  padding: clamp(5rem, 11vw, 9rem) 1.5rem;
+}
+.ap-steps-grid {
+  max-width: 1120px;
+  margin: clamp(2.5rem, 6vw, 4rem) auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+}
+.ap-step-n {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ap-accent);
+  margin: 0 0 0.9rem;
+}
+.ap-step-t {
+  font-size: clamp(1.25rem, 2.2vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  margin: 0 0 0.6rem;
+}
+.ap-step-d { color: var(--ap-grey); margin-bottom: 0; }
+.ap-step { border-top: 1px solid var(--ap-hairline); padding-top: 1.6rem; }
+
+/* ── ZÁVĚR ───────────────────────────────────────────── */
+.ap-final {
+  background: var(--ap-black);
+  color: var(--ap-paper);
+  padding: clamp(5.5rem, 12vw, 10rem) 1.5rem;
+  text-align: center;
+}
+.ap-contact {
+  margin: 2.6rem 0 0;
+  font-size: 0.98rem;
+  color: var(--ap-grey-dark);
+}
+.ap-contact a { color: var(--ap-paper); text-decoration: none; }
+.ap-contact a:hover { color: var(--ap-accent); }
+.ap-dot { margin: 0 0.6rem; opacity: 0.5; }
+
+/* ── Mobil ───────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .ap-panel-grid { grid-template-columns: 1fr; }
+  .ap-panel-grid[data-flip="1"] .ap-panel-copy,
+  .ap-panel-grid[data-flip="1"] .ap-panel-img { order: initial; }
+  .ap-steps-grid { grid-template-columns: 1fr; }
+  .ap-stats { grid-template-columns: 1fr; gap: 2.5rem; }
+  .ap-hero { min-height: auto; padding-top: 6.5rem; padding-bottom: 3rem; }
+  .ap-hero-grid { grid-template-columns: 1fr; }
+  .ap-hero-img { max-width: 380px; margin-inline: auto; }
+  .ap-lead { max-width: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-pill:hover { transform: none; }
+  .ap-arrow:hover svg { transform: none; }
+}

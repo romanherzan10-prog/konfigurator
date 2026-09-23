@@ -9,6 +9,15 @@
  * Všechny kódy produktů ověřeny proti katalogu (aktivní, viditelné značky).
  * Ceny = VÝHRADNĚ retailové („vč. DPH“) — nikdy nákupní ceny ani marže.
  *
+ * POZOR: čísla níž jsou opsaná ručně a ZASTARÁVAJÍ. Při kontrole 9/2026 byly
+ * dvě mimo (PA 396 uváděla 588 místo 530, Severny 290 místo 271) a nikdo si
+ * toho nevšiml. Ověřit jde takto:
+ *
+ *   select kod, cena_od, round(cena_od*1.21) as s_dph
+ *   from produkty_katalog_flat where kod in ('20.P396', ...);
+ *
+ * Správné řešení je generovat tuhle sekci z databáze, ne ji přepisovat.
+ *
  * STRUKTURA:
  * - DOPORUCENI_DLE_UCELU — co doporučit podle účelu
  * - DOPORUCENI_DLE_PRODUKTU — ověřené produkty/značky s kódy
@@ -33,7 +42,7 @@ export const DOPORUCENI_DLE_UCELU = `
 ### Firemní merch / dárky pro klienty
 - Priorita: vnímaná kvalita. Trička 175–200 g.
 - Doporuč: SOL'S Legend (kod 25.3981, 175 g, bio bavlna — náš kurátorský TOP) nebo B&C #E190 (kod 01.003T, 185 g; dámská 01.004T, dětská 01.008T).
-- Mikiny: Kariban K474 klokanka (kod 20.K474) / K477 se zipem (kod 20.K477); sportovnější Kariban ProAct PA 396 (kod 20.P396 — kurátorský TOP, retail od 588 Kč vč. DPH).
+- Mikiny: Kariban K474 klokanka (kod 20.K474) / K477 se zipem (kod 20.K477); sportovnější Kariban ProAct PA 396 (kod 20.P396 — kurátorský TOP, retail od 530 Kč vč. DPH).
 - Zdobení: výšivka pro prémiový dojem, DTF pro plnobarevná loga.
 
 ### Denní pracovní oblečení (kancelář, prodejna)
@@ -56,7 +65,7 @@ export const DOPORUCENI_DLE_UCELU = `
 - Pozor na velikosti: dětský střih ≠ zmenšený dospělý; vždy potvrdit věk.
 
 ### Jednorázová akce (festival, koncert, charita)
-- Maximálně levně: SOL'S Urban (kod 26.7060, retail od 52 Kč vč. DPH) nebo F.O.L. Valueweight T (kod 16.1036).
+- Maximálně levně: SOL'S Urban (kod 26.7060, retail od 51 Kč vč. DPH) nebo F.O.L. Valueweight T (kod 16.1036).
 - Sítotisk při 200+ ks (1–2 barvy), DTF při menším množství.
 
 ### Udržitelnost (bio / recyklované) — máme velký výběr
@@ -74,9 +83,9 @@ export const DOPORUCENI_DLE_PRODUKTU = `
 
 ### Kurátorské TOPy (doporučuj přednostně, majitel je vybral)
 1. SOL'S Legend — tričko 175 g, bio bavlna (kod 25.3981)
-2. Kariban ProAct PA 396 — mikina (kod 20.P396, retail od 588 Kč vč. DPH)
+2. Kariban ProAct PA 396 — mikina (kod 20.P396, retail od 530 Kč vč. DPH)
 3. Stedman Classic Sweatshirt Kids — dětská mikina (kod 05.4370)
-4. Atlantis Severny — zimní čepice (kod 33.0307, retail od 290 Kč vč. DPH)
+4. Atlantis Severny — zimní čepice (kod 33.0307, retail od 271 Kč vč. DPH)
 
 ### Trička (435 aktivních; top značky: SOL'S, J&N, Kariban, B&C, F.O.L.)
 - Basic: F.O.L. Valueweight T (16.1036, 165 g) · SOL'S Urban (26.7060, od 52 Kč)

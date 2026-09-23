@@ -165,13 +165,11 @@ export function calculateEstimate(
   const unitPrice = Math.max(config.minimalni_cena_ks, subtotal - discountAmount);
   const totalPrice = unitPrice * quantity;
 
-  const DPH = 1.21;
-
   return {
     unitPrice,
     totalPrice,
-    unitPriceWithDph: Math.round(unitPrice * DPH),
-    totalPriceWithDph: Math.round(totalPrice * DPH),
+    unitPriceWithDph: sDph(unitPrice),
+    totalPriceWithDph: sDph(totalPrice),
     baseProductPrice,
     zpracovaniPrice,
     quantityDiscount: discountAmount,
@@ -185,4 +183,23 @@ export function formatPrice(value: number): string {
     currency: "CZK",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/**
+ * Sazba DPH pro ceny, které vidí zákazník na veřejném webu.
+ *
+ * Veřejný web mluví se zákazníkem **v cenách včetně DPH** — konfigurátor
+ * i merch to tak ukazují a poptávka se s DPH i ukládá. Katalog textilu
+ * naopak zobrazuje základ bez DPH (a takto ho i popisuje).
+ *
+ * `ceniky.cena_1000` a z něj odvozené `cena_od` / `cena_*ks` jsou vždy
+ * **bez DPH** — nákupní ceny od dodavatelů jsou bez DPH a retail je jejich
+ * dvojnásobek. Kdykoliv se takové číslo ukazuje jako „vč. DPH", musí projít
+ * přes `sDph()`.
+ */
+export const SAZBA_DPH = 1.21;
+
+/** Základ bez DPH → cena včetně DPH, zaokrouhleno na koruny. */
+export function sDph(cenaBezDph: number): number {
+  return Math.round(cenaBezDph * SAZBA_DPH);
 }
